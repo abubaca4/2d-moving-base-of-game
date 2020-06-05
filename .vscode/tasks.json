@@ -1,0 +1,25 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build c++ with sdl2",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g", "-Og", // "debug" build
+                //"-O3",
+                "${file}", 
+                "-march=native", "-Wall", "-pedantic",
+                "-std=c++17",
+                "-lSDL2",
+                "-o${fileBasenameNoExtension}"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
