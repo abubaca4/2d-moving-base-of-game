@@ -41,11 +41,11 @@ void *client_sender(void *data)
 
     while (n)
     {
-        usleep(1);
         pthread_mutex_lock(prop.time_mutex);
         if ((*prop.update_time).tv_sec == last_time.tv_sec && (*prop.update_time).tv_usec == last_time.tv_usec)
         {
             pthread_mutex_unlock(prop.time_mutex);
+            usleep(1);
             continue;
         }
         last_time = (*prop.update_time);
