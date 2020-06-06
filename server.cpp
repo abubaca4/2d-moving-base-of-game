@@ -128,9 +128,15 @@ void *main_client_thread(void *port)
         std::cout << "Map file not found\n";
         exit(2);
     }
-    for (size_t i = 0; i < map_s.size(); i++)
-        for (size_t j = 0; j < map_s[i].size(); j++)
-            in >> map_s[i][j];
+    {
+        size_t temp;
+        for (size_t i = 0; i < map_s.size(); i++)
+            for (size_t j = 0; j < map_s[i].size(); j++)
+            {
+                in >> temp;
+                map_s[i][j] = temp;
+            }
+    }
     in.close();
 
     struct timeval update_time;
@@ -183,14 +189,15 @@ void *main_client_thread(void *port)
 
 int main(int argc, char *argv[])
 {
+    // нужное ли число аргументов при запуске
     if (argc != 2)
     {
         std::cout << "No port given\n";
         return -1;
     }
-
+    // порт из строки в число
     int port = atoi(argv[1]);
-
+    // 0 если строка не число
     if (port == 0)
     {
         perror("Not correct port");
