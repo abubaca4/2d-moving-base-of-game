@@ -26,8 +26,7 @@ void *client_sender(void *data)
     thread_data &prop = *((thread_data *)data);
 
     struct timeval last_time;
-    last_time.tv_sec = 0;
-    last_time.tv_usec = 0;
+    last_time.tv_sec = last_time.tv_usec = 0;
 
     field_cells_type *buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
 

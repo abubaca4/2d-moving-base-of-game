@@ -1,3 +1,8 @@
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+#include <sys/time.h>
+
 #include "SDL2/SDL.h"
 
 #include <vector>
@@ -79,15 +84,150 @@ void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::ve
             }
 }
 
+struct thread_data
+{
+    pthread_mutex_t *time_mutex;
+    struct timeval *update_time;
+    pthread_mutex_t *map_mutex;
+    std::vector<std::vector<field_cells_type>> *map_s;
+    int sockfd;
+};
+
+void *reciver(void *data)
+{
+    thread_data &prop = *((thread_data *)data);
+
+    int n = 1;
+    prepare_message_data_send input_format;
+    field_cells_type *buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
+
+    while (n)
+    {
+        n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
+        switch (input_format.type)
+        {
+        case field_type:
+            n = recv(prop.sockfd, (field_cells_type *)buff, input_format.size, 0);
+            pthread_mutex_lock(prop.map_mutex);
+            for (size_t i = 0; i < (*prop.map_s).size(); i++)
+                for (size_t j = 0; j < (*prop.map_s)[i].size(); j++)
+                    (*prop.map_s)[i][j] = buff[i * (*prop.map_s).size() + j];
+            pthread_mutex_unlock(prop.map_mutex);
+            pthread_mutex_lock(prop.time_mutex);
+            gettimeofday(prop.update_time, NULL);
+            pthread_mutex_unlock(prop.time_mutex);
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    delete[] buff;
+    return (void *)(0);
+}
+
+bool found_player(std::vector<std::vector<field_cells_type>> &mat, size_t &x, size_t &y)
+{
+    for (size_t i = 0; i < mat.size(); i++)
+        for (size_t j = 0; j < mat[i].size(); j++)
+            if (mat[i][j] == player)
+            {
+                y = i;
+                x = j;
+                return true;
+            }
+    return false;
+}
+
 int main(int argc, char *argv[])
 {
-    const int lines = 8;
-    const int colonums = 8;
-    std::vector<std::vector<field_cells_type>> mat(lines, std::vector<field_cells_type>(colonums, empty));
+    if (argc != 2)
+    {
+        perror("No address given");
+        return -1;
+    }
+
+    int border = strstr(argv[1], ":") - argv[1];
+
+    if (border + argv[1] == NULL)
+    {
+        perror("Not correct format of address");
+        return -1;
+    }
+
+    char *ip = new char[border + 1];
+    strncpy(ip, argv[1], border);
+    ip[border] = '\0';
+    int port = atoi(argv[1] + border + 1);
+
+    int lines = 8;
+    int colonums = 8;
+    std::vector<std::vector<field_cells_type>> mat;
+    struct timeval update_time, last_time;
+    last_time.tv_sec = last_time.tv_usec = 0;
+    pthread_mutex_t time_mutex;
+    pthread_mutex_init(&time_mutex, NULL);
+    pthread_mutex_t map_mutex;
+    pthread_mutex_init(&map_mutex, NULL);
+
+    struct sockaddr_in servaddr;
+    int sockfd = socket(PF_INET, SOCK_STREAM, 0);
+
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(port);
+    inet_aton(ip, &(servaddr.sin_addr));
+    delete[] ip;
+    int n = 1;
+
+    {
+        bool flag_size = false;
+        bool flag_mat = false;
+        prepare_message_data_send input_format;
+        while (!(flag_size && flag_mat))
+        {
+            n = recv(sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
+            switch (input_format.type)
+            {
+            case field_size:
+                lines = input_format.size;
+                colonums = input_format.second_size;
+                mat = std::vector<std::vector<field_cells_type>>(lines, std::vector<field_cells_type>(colonums));
+                flag_size = true;
+                break;
+
+            case field_type:
+            {
+                field_cells_type *buff = new field_cells_type[input_format.size];
+                n = recv(sockfd, (field_cells_type *)buff, input_format.size, 0);
+                for (size_t i = 0; i < mat.size(); i++)
+                    for (size_t j = 0; j < mat[i].size(); j++)
+                        mat[i][j] = buff[i * mat.size() + j];
+                delete[] buff;
+                flag_mat = true;
+                gettimeofday(&update_time, NULL);
+            }
+            break;
+
+            default:
+                break;
+            }
+        }
+    }
+
     size_t x = 0;
     size_t y = 0;
-    mat[x][y] = player;
-    mat[1][1] = wall;
+
+    thread_data share_data;
+    share_data.sockfd = sockfd;
+    share_data.map_s = &mat;
+    share_data.map_mutex = &map_mutex;
+    share_data.update_time = &update_time;
+    share_data.time_mutex = &time_mutex;
+
+    pthread_t reciver_thread;
+    pthread_create(&reciver_thread, NULL, reciver, (void *)&share_data);
+
     if (SDL_Init(SDL_INIT_VIDEO) == 0)
     {
         SDL_Window *window = NULL;
@@ -97,8 +237,18 @@ int main(int argc, char *argv[])
         {
             SDL_bool done = SDL_FALSE;
 
-            while (!done)
+            while (!done && n)
             {
+                pthread_mutex_lock(&time_mutex);
+                if (last_time.tv_sec == update_time.tv_sec && last_time.tv_usec == update_time.tv_usec)
+                {
+                    pthread_mutex_unlock(&time_mutex);
+                    continue;
+                }
+                pthread_mutex_unlock(&time_mutex);
+                last_time = update_time;
+                found_player(mat, x, y);
+
                 SDL_Event event;
 
                 SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
@@ -108,7 +258,9 @@ int main(int argc, char *argv[])
                 SDL_GetWindowSize(window, &w, &h);
 
                 boards(renderer, w, h, lines, colonums);
+                pthread_mutex_lock(&map_mutex);
                 map_s(renderer, w, h, mat);
+                pthread_mutex_unlock(&map_mutex);
 
                 SDL_RenderPresent(renderer);
 
@@ -120,42 +272,37 @@ int main(int argc, char *argv[])
                     }
                     else if (event.type == SDL_KEYDOWN)
                     {
+                        struct action_send temp;
+                        temp.action = move;
+                        temp.from_x = x;
+                        temp.from_y = y;
+
                         switch (event.key.keysym.sym)
                         {
                         case SDLK_UP:
-                            if (y > 0 && mat[y - 1][x] == empty)
-                            {
-                                mat[y][x] = empty;
-                                y--;
-                                mat[y][x] = player;
-                            }
+                            temp.to_x = x;
+                            temp.to_y = y - 1;
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
                             break;
 
                         case SDLK_DOWN:
-                            if (y + 1 < mat.size() && mat[y + 1][x] == empty)
-                            {
-                                mat[y][x] = empty;
-                                y++;
-                                mat[y][x] = player;
-                            }
+                            temp.to_x = x;
+                            temp.to_y = y + 1;
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
                             break;
 
                         case SDLK_LEFT:
-                            if (x > 0 && mat[y][x - 1] == empty)
-                            {
-                                mat[y][x] = empty;
-                                x--;
-                                mat[y][x] = player;
-                            }
+                            temp.to_x = x - 1;
+                            temp.to_y = y;
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
                             break;
 
                         case SDLK_RIGHT:
-                            if (x + 1 < mat[y].size() && mat[y][x + 1] == empty)
-                            {
-                                mat[y][x] = empty;
-                                x++;
-                                mat[y][x] = player;
-                            }
+                            temp.to_x = x + 1;
+                            temp.to_y = y;
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            break;
+                        default:
                             break;
                         }
                     }
@@ -172,6 +319,8 @@ int main(int argc, char *argv[])
             SDL_DestroyWindow(window);
         }
     }
+    pthread_mutex_destroy(&time_mutex);
+    pthread_mutex_destroy(&map_mutex);
     SDL_Quit();
     return 0;
 }
