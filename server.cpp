@@ -31,7 +31,15 @@ void *client_sender(void *data)
 
     field_cells_type *buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
 
-    int n = 1;
+    int n;
+    {
+        prepare_message_data_send map_s_size;
+        map_s_size.type = field_size;
+        map_s_size.size = (*prop.map_s).size();
+        map_s_size.second_size = (*prop.map_s)[0].size();
+        n = send(prop.sockfd, (prepare_message_data_send *)&map_s_size, sizeof(prepare_message_data_send), 0);
+    }
+
     while (n)
     {
         usleep(1);

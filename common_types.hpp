@@ -19,13 +19,14 @@ struct action_send
 enum data_type_send
 {
     field_type = 0,
-    player_list = 1
+    player_list = 1,
+    field_size = 2
 };
 
 struct prepare_message_data_send
 {
     data_type_send type;
-    size_t size;
+    size_t size, second_size;
 };
 
 #define field_cells_type uint8_t
