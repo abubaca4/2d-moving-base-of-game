@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #include "SDL2/SDL.h"
 
@@ -99,15 +100,23 @@ void *reciver(void *data)
 
     int n = 1;
     prepare_message_data_send input_format;
-    field_cells_type *buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
+    field_cells_type *buff = NULL;
 
     while (n)
     {
         n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
         switch (input_format.type)
         {
+        case field_size:
+            pthread_mutex_lock(prop.map_mutex);
+            (*prop.map_s) = std::vector<std::vector<field_cells_type>>(input_format.size, std::vector<field_cells_type>(input_format.second_size));
+            pthread_mutex_unlock(prop.map_mutex);
+            break;
+
         case field_type:
             n = recv(prop.sockfd, (field_cells_type *)buff, input_format.size, 0);
+            if (buff == NULL)
+                buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
             pthread_mutex_lock(prop.map_mutex);
             for (size_t i = 0; i < (*prop.map_s).size(); i++)
                 for (size_t j = 0; j < (*prop.map_s)[i].size(); j++)
@@ -161,11 +170,10 @@ int main(int argc, char *argv[])
     ip[border] = '\0';
     int port = atoi(argv[1] + border + 1);
 
-    int lines = 0;
-    int colonums = 0;
     std::vector<std::vector<field_cells_type>> mat;
     struct timeval update_time, last_time;
-    last_time.tv_sec = last_time.tv_usec = 0;
+    gettimeofday(&update_time, NULL);
+    last_time = update_time;
     pthread_mutex_t time_mutex;
     pthread_mutex_init(&time_mutex, NULL);
     pthread_mutex_t map_mutex;
@@ -187,46 +195,6 @@ int main(int argc, char *argv[])
     delete[] ip;
     int n = 1;
 
-    {
-        bool flag_size = false;
-        bool flag_mat = false;
-        prepare_message_data_send input_format;
-        while (!(flag_size && flag_mat))
-        {
-            n = recv(sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
-            switch (input_format.type)
-            {
-            case field_size:
-                lines = input_format.size;
-                colonums = input_format.second_size;
-                mat = std::vector<std::vector<field_cells_type>>(lines, std::vector<field_cells_type>(colonums));
-                flag_size = true;
-                break;
-
-            case field_type:
-            {
-                field_cells_type *buff = new field_cells_type[input_format.size];
-                n = recv(sockfd, (field_cells_type *)buff, input_format.size, 0);
-                for (size_t i = 0; i < mat.size(); i++)
-                    for (size_t j = 0; j < mat[i].size(); j++)
-                        mat[i][j] = buff[i * mat.size() + j];
-                delete[] buff;
-                flag_mat = true;
-                gettimeofday(&update_time, NULL);
-            }
-            break;
-
-            default:
-                break;
-            }
-        }
-    }
-
-    if (!n)
-    {
-        exit(1);
-    }
-
     size_t x = 0;
     size_t y = 0;
 
@@ -239,6 +207,15 @@ int main(int argc, char *argv[])
 
     pthread_t reciver_thread;
     pthread_create(&reciver_thread, NULL, reciver, (void *)&share_data);
+
+    pthread_mutex_lock(&time_mutex);
+    while (!memcmp(&update_time, &last_time, sizeof(timeval)))
+    {
+        pthread_mutex_unlock(&time_mutex);
+        usleep(1);
+        pthread_mutex_lock(&time_mutex);
+    }
+    pthread_mutex_unlock(&time_mutex);
 
     if (SDL_Init(SDL_INIT_VIDEO) == 0)
     {
@@ -298,7 +275,7 @@ int main(int argc, char *argv[])
                 }
 
                 pthread_mutex_lock(&time_mutex);
-                if (last_time.tv_sec == update_time.tv_sec && last_time.tv_usec == update_time.tv_usec)
+                if (!memcmp(&update_time, &last_time, sizeof(timeval)))
                 {
                     pthread_mutex_unlock(&time_mutex);
                     continue;
@@ -313,8 +290,8 @@ int main(int argc, char *argv[])
                 int w, h;
                 SDL_GetWindowSize(window, &w, &h);
 
-                boards(renderer, w, h, lines, colonums);
                 pthread_mutex_lock(&map_mutex);
+                boards(renderer, w, h, mat.size(), mat[0].size());
                 map_s(renderer, w, h, mat);
                 pthread_mutex_unlock(&map_mutex);
 
