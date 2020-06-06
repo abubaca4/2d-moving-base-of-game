@@ -96,7 +96,7 @@ void *client_reciver(void *data)
         {
         case move:
             pthread_mutex_lock(prop.map_mutex);
-            if ((*prop.map_s)[input_act.to_x][input_act.to_y] == empty)
+            if (input_act.to_x < (*prop.map_s)[0].size() && input_act.to_y < (*prop.map_s).size() && (*prop.map_s)[input_act.to_y][input_act.to_x] == empty)
             {
                 (*prop.map_s)[input_act.from_x][input_act.from_y] = empty;
                 (*prop.map_s)[input_act.to_x][input_act.to_y] = player;

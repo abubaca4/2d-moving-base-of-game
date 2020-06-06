@@ -13,7 +13,7 @@ enum actions
 struct action_send
 {
     actions action;
-    int from_x, from_y, to_x, to_y;
+    size_t from_x, from_y, to_x, to_y;
 };
 
 enum data_type_send
