@@ -98,13 +98,14 @@ void *reciver(void *data)
 {
     thread_data &prop = *((thread_data *)data);
 
-    int n = 1;
     prepare_message_data_send input_format;
-    field_cells_type *buff = NULL;
+    int n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
+    if (input_format.type != field_size)
+        exit(1);
+    field_cells_type *buff = new field_cells_type[input_format.size * input_format.second_size];
 
     while (n)
     {
-        n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
         switch (input_format.type)
         {
         case field_size:
@@ -115,8 +116,6 @@ void *reciver(void *data)
 
         case field_type:
             n = recv(prop.sockfd, (field_cells_type *)buff, input_format.size, 0);
-            if (buff == NULL)
-                buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
             pthread_mutex_lock(prop.map_mutex);
             for (size_t i = 0; i < (*prop.map_s).size(); i++)
                 for (size_t j = 0; j < (*prop.map_s)[i].size(); j++)
@@ -130,6 +129,7 @@ void *reciver(void *data)
         default:
             break;
         }
+        n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
     }
 
     delete[] buff;
