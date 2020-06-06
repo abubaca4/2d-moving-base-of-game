@@ -231,6 +231,7 @@ int main(int argc, char *argv[])
         if (SDL_CreateWindowAndRenderer(640, 480, SDL_WINDOW_RESIZABLE, &window, &renderer) == 0) //создать окно размер которого разрешено изменять
         {
             SDL_bool done = SDL_FALSE; //хз зачем нужен такой тип в примере sdl он был)
+            SDL_bool need_review = SDL_FALSE;
 
             while (!done && n) //пока не завершено или соединение не потеряно
             {
@@ -241,6 +242,18 @@ int main(int argc, char *argv[])
                     if (event.type == SDL_QUIT)
                     {
                         done = SDL_TRUE;
+                    }
+                    else if (event.type == SDL_WINDOWEVENT)
+                    {
+                        switch (event.window.event)
+                        {
+                        case SDL_WINDOWEVENT_SIZE_CHANGED: //для нормальной отрисовки при resize
+                            need_review = SDL_TRUE;
+                            break;
+
+                        default:
+                            break;
+                        }
                     }
                     else if (event.type == SDL_KEYDOWN)
                     {
@@ -281,13 +294,14 @@ int main(int argc, char *argv[])
                 }
 
                 pthread_mutex_lock(&time_mutex);
-                if (!memcmp(&update_time, &last_time, sizeof(timeval))) //если карта не изменилась не отрисовывать снова
+                if (!memcmp(&update_time, &last_time, sizeof(timeval)) && !need_review) //если карта не изменилась не отрисовывать снова, отрисовать снова если специальный флаг поднят
                 {
                     pthread_mutex_unlock(&time_mutex);
                     continue;
                 }
                 pthread_mutex_unlock(&time_mutex);
                 last_time = update_time; //обновить до отрисованной версии
+                need_review = SDL_FALSE; //опустить специальный флаг
                 found_player(mat, x, y);
 
                 SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
