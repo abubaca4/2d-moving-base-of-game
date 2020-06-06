@@ -246,30 +246,7 @@ int main(int argc, char *argv[])
 
             while (!done && n)
             {
-                pthread_mutex_lock(&time_mutex);
-                if (last_time.tv_sec == update_time.tv_sec && last_time.tv_usec == update_time.tv_usec)
-                {
-                    pthread_mutex_unlock(&time_mutex);
-                    continue;
-                }
-                pthread_mutex_unlock(&time_mutex);
-                last_time = update_time;
-                found_player(mat, x, y);
-
                 SDL_Event event;
-
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-                SDL_RenderClear(renderer);
-
-                int w, h;
-                SDL_GetWindowSize(window, &w, &h);
-
-                boards(renderer, w, h, lines, colonums);
-                pthread_mutex_lock(&map_mutex);
-                map_s(renderer, w, h, mat);
-                pthread_mutex_unlock(&map_mutex);
-
-                SDL_RenderPresent(renderer);
 
                 while (SDL_PollEvent(&event))
                 {
@@ -314,6 +291,29 @@ int main(int argc, char *argv[])
                         }
                     }
                 }
+
+                pthread_mutex_lock(&time_mutex);
+                if (last_time.tv_sec == update_time.tv_sec && last_time.tv_usec == update_time.tv_usec)
+                {
+                    pthread_mutex_unlock(&time_mutex);
+                    continue;
+                }
+                pthread_mutex_unlock(&time_mutex);
+                last_time = update_time;
+                found_player(mat, x, y);
+
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+                SDL_RenderClear(renderer);
+
+                int w, h;
+                SDL_GetWindowSize(window, &w, &h);
+
+                boards(renderer, w, h, lines, colonums);
+                pthread_mutex_lock(&map_mutex);
+                map_s(renderer, w, h, mat);
+                pthread_mutex_unlock(&map_mutex);
+
+                SDL_RenderPresent(renderer);
             }
         }
 
