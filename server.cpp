@@ -4,6 +4,7 @@
 #include <strings.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <string.h>
 
 #include <iostream>
 #include <string>
@@ -23,15 +24,15 @@ struct thread_data
 
 void *client_sender(void *data)
 {
-    thread_data &prop = *((thread_data *)data);
-
+    thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
+    //структура с временем последней отправленной клиенту версии
     struct timeval last_time;
-    last_time.tv_sec = last_time.tv_usec = 0;
-
+    last_time.tv_sec = last_time.tv_usec = 0; //равна 0 для того чтобы по старту в первый раз произошла отправка
+    //буфер данных для передачи, сделан из неумения передавать вектор, по хорошему надо либо передавать вектор либо пользоваться буфером как основным хранилищем
     field_cells_type *buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
 
     int n;
-    {
+    { //отправка размеров поля клиенту
         prepare_message_data_send map_s_size;
         map_s_size.type = field_size;
         map_s_size.size = (*prop.map_s).size();
@@ -41,34 +42,34 @@ void *client_sender(void *data)
 
     while (n)
     {
-        pthread_mutex_lock(prop.time_mutex);
-        if ((*prop.update_time).tv_sec == last_time.tv_sec && (*prop.update_time).tv_usec == last_time.tv_usec)
+        pthread_mutex_lock(prop.time_mutex); //проверка обновления времени
+        if (!memcmp(prop.update_time, &last_time, sizeof(timeval)))
         {
             pthread_mutex_unlock(prop.time_mutex);
             usleep(1);
-            continue;
+            continue; //пропуск при отсутствии изменений
         }
-        last_time = (*prop.update_time);
+        last_time = (*prop.update_time); //обновление времени
         pthread_mutex_unlock(prop.time_mutex);
-        prepare_message_data_send prep_m;
+        prepare_message_data_send prep_m; //сообщение с длиной буфера
         prep_m.type = field_type;
         pthread_mutex_lock(prop.map_mutex);
         prep_m.size = (*prop.map_s).size() * (*prop.map_s)[0].size() * sizeof(field_cells_type);
         n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
-        for (size_t i = 0; i < (*prop.map_s).size(); i++)
+        for (size_t i = 0; i < (*prop.map_s).size(); i++) //перенос данных в буфер
             for (size_t j = 0; j < (*prop.map_s)[i].size(); j++)
                 buff[i * (*prop.map_s).size() + j] = (*prop.map_s)[i][j];
         pthread_mutex_unlock(prop.map_mutex);
-        n = send(prop.sockfd, (field_cells_type *)buff, prep_m.size, 0);
+        n = send(prop.sockfd, (field_cells_type *)buff, prep_m.size, 0); //отправка буфера
     }
-    delete[] buff;
+    delete[] buff; //удаление буфера
     return (void *)(0);
 }
 
 void *client_reciver(void *data)
 {
-    thread_data &prop = *((thread_data *)data);
-
+    thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
+    //поиск свободной точки для игрока
     pthread_mutex_lock(prop.map_mutex);
     {
         bool flag_found = false;
@@ -81,25 +82,26 @@ void *client_reciver(void *data)
                 }
     }
     pthread_mutex_unlock(prop.map_mutex);
-    pthread_mutex_lock(prop.time_mutex);
+    pthread_mutex_lock(prop.time_mutex); //время меняется на каждое изменение поля
     gettimeofday(prop.update_time, NULL);
     pthread_mutex_unlock(prop.time_mutex);
 
-    pthread_t sender_start;
+    pthread_t sender_start; //запуск потока отслеживающего изменения поля и отсылающего клиенту
     pthread_create(&sender_start, NULL, client_sender, (void *)&prop);
 
-    action_send input_act;
-    int n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
-    while (n)
+    action_send input_act;                                                        //переменная для получения действий игрока
+    int n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0); //получение первого действи
+    while (n)                                                                     //если n==0 соединение разорвано
     {
-        switch (input_act.action)
+        switch (input_act.action) //для возможности добавления новых действий
         {
         case move:
             pthread_mutex_lock(prop.map_mutex);
+            //проверка не покидания пределов поля и свободности ячейки. не может быть меньше 0 беззнаковый тип
             if (input_act.to_x < (*prop.map_s)[0].size() && input_act.to_y < (*prop.map_s).size() && (*prop.map_s)[input_act.to_y][input_act.to_x] == empty)
             {
-                (*prop.map_s)[input_act.from_x][input_act.from_y] = empty;
-                (*prop.map_s)[input_act.to_x][input_act.to_y] = player;
+                (*prop.map_s)[input_act.from_y][input_act.from_x] = empty;
+                (*prop.map_s)[input_act.to_y][input_act.to_x] = player;
                 pthread_mutex_lock(prop.time_mutex);
                 gettimeofday(prop.update_time, NULL);
                 pthread_mutex_unlock(prop.time_mutex);
@@ -112,38 +114,41 @@ void *client_reciver(void *data)
         }
         n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     }
-    pthread_join(sender_start, (void **)&n);
-    delete &prop;
+    pthread_join(sender_start, (void **)&n); //перед удалением данных для потока убедится в завершении потока отслеживателя изменений
+    delete &prop;                            //удаление структуры с данными для потоков
     return (void *)(0);
 }
 
 void *main_client_thread(void *port)
 {
+    // открытие файла карты
     std::ifstream in("map.txt");
+    //размерности карты
     int lines, colonums;
     in >> lines >> colonums;
-    std::vector<std::vector<field_cells_type>> map_s(lines, std::vector<field_cells_type>(colonums));
-    if (!in.is_open())
+    if (!in.is_open()) //выход если открытие файла не успешно
     {
         std::cout << "Map file not found\n";
         exit(2);
     }
+    //создание поля для игры
+    std::vector<std::vector<field_cells_type>> map_s(lines, std::vector<field_cells_type>(colonums));
     {
-        size_t temp;
+        size_t temp; //переменная для чтения ячеек, отдельный блок для удаления после выхода
         for (size_t i = 0; i < map_s.size(); i++)
             for (size_t j = 0; j < map_s[i].size(); j++)
             {
-                in >> temp;
+                in >> temp; //чтение в темп так как чтение напрямую происходит в char виде
                 map_s[i][j] = temp;
             }
     }
-    in.close();
-
+    in.close(); //закрытие файла
+    // время последнего обновления карты для детекции изменений
     struct timeval update_time;
     gettimeofday(&update_time, NULL);
     pthread_mutex_t time_mutex;
     pthread_mutex_init(&time_mutex, NULL);
-
+    //мьютекс для одновременного доступа к карте только 1 потока
     pthread_mutex_t map_mutex;
     pthread_mutex_init(&map_mutex, NULL);
 
@@ -174,13 +179,16 @@ void *main_client_thread(void *port)
     {
         struct sockaddr_in cliaddr;
         socklen_t clilen = sizeof(cliaddr);
+        //ожидание нового клиента
         int newsockfd = accept(sockfd, (struct sockaddr *)&cliaddr, &clilen);
+        //сохранение данных необходимых для работы ротока, удаляются потоком
         thread_data *prop = new thread_data;
         prop->sockfd = newsockfd;
         prop->map_mutex = &map_mutex;
         prop->map_s = &map_s;
         prop->time_mutex = &time_mutex;
         prop->update_time = &update_time;
+        // запуск потока для клиента, нет необходимости хранить, завершит себя сам по потере соединения
         pthread_t client_start;
         pthread_create(&client_start, NULL, client_reciver, (void *)prop);
     }
@@ -203,9 +211,9 @@ int main(int argc, char *argv[])
         perror("Not correct port");
         return -1;
     }
-
+    //поток для приёма новых соединений
     pthread_t main_thread;
-
+    //создание потока и передача порта
     pthread_create(&main_thread, NULL, main_client_thread, (void *)&port);
 
     std::cout << "Ready to recive commands\n";
@@ -213,11 +221,11 @@ int main(int argc, char *argv[])
     std::string command;
     while (!done)
     {
-        std::getline(std::cin, command);
+        std::getline(std::cin, command); //чтение строки с командой
         if (command == "exit")
         {
-            pthread_cancel(main_thread);
-            exit(0);
+            pthread_cancel(main_thread); //остановка потока
+            exit(0);                     //выход
         }
         else if (command == "help")
         {
