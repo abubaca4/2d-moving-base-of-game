@@ -23,7 +23,7 @@ struct thread_data
 
 void *client_sender(void *data)
 {
-    thread_data prop = *((thread_data *)data);
+    thread_data &prop = *((thread_data *)data);
 
     struct timeval last_time;
     last_time.tv_sec = 0;
@@ -60,9 +60,24 @@ void *client_sender(void *data)
 
 void *client_reciver(void *data)
 {
-    thread_data prop = *((thread_data *)data);
-    delete (thread_data *)data;
-    client_sender((void *)&prop);
+    thread_data &prop = *((thread_data *)data);
+
+    pthread_mutex_lock(prop.map_mutex);
+    {
+        bool flag_found = false;
+        for (size_t i = 0; i < (*prop.map_s).size() && !flag_found; i++)
+            for (size_t j = 0; j < (*prop.map_s)[i].size() && !flag_found; j++)
+                if ((*prop.map_s)[i][j] == empty)
+                {
+                    (*prop.map_s)[i][j] = player;
+                    flag_found = true;
+                }
+    }
+    pthread_mutex_unlock(prop.map_mutex);
+    pthread_mutex_lock(prop.time_mutex);
+    gettimeofday(prop.update_time, NULL);
+    pthread_mutex_unlock(prop.time_mutex);
+
     pthread_t sender_start;
     pthread_create(&sender_start, NULL, client_sender, (void *)&prop);
 
@@ -90,6 +105,8 @@ void *client_reciver(void *data)
         }
         n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     }
+    pthread_join(sender_start, (void **)&n);
+    delete &prop;
     return (void *)(0);
 }
 
@@ -107,7 +124,6 @@ void *main_client_thread(void *port)
     for (size_t i = 0; i < map_s.size(); i++)
         for (size_t j = 0; j < map_s[i].size(); j++)
             in >> map_s[i][j];
-
     in.close();
 
     struct timeval update_time;
