@@ -161,8 +161,8 @@ int main(int argc, char *argv[])
     ip[border] = '\0';
     int port = atoi(argv[1] + border + 1);
 
-    int lines = 8;
-    int colonums = 8;
+    int lines = 0;
+    int colonums = 0;
     std::vector<std::vector<field_cells_type>> mat;
     struct timeval update_time, last_time;
     last_time.tv_sec = last_time.tv_usec = 0;
@@ -220,6 +220,11 @@ int main(int argc, char *argv[])
                 break;
             }
         }
+    }
+
+    if (!n)
+    {
+        exit(1);
     }
 
     size_t x = 0;
