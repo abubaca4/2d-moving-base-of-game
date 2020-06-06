@@ -15,19 +15,47 @@
 struct thread_data
 {
     pthread_mutex_t *time_mutex;
-    struct timeval* update_time;
+    struct timeval *update_time;
     pthread_mutex_t *map_mutex;
-    std::vector<std::vector<uint8_t>> *map_s;
+    std::vector<std::vector<field_cells_type>> *map_s;
     int sockfd;
-    struct sockaddr_in cliaddr;
 };
 
 void *client_sender(void *data)
 {
     thread_data prop = *((thread_data *)data);
 
+    struct timeval last_time;
+    last_time.tv_sec = 0;
+    last_time.tv_usec = 0;
+
+    field_cells_type *buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
+
     int n = 1;
-    usleep(1);
+    while (n)
+    {
+        usleep(1);
+        pthread_mutex_lock(prop.time_mutex);
+        if ((*prop.update_time).tv_sec == last_time.tv_sec && (*prop.update_time).tv_usec == last_time.tv_usec)
+        {
+            pthread_mutex_unlock(prop.time_mutex);
+            continue;
+        }
+        last_time = (*prop.update_time);
+        pthread_mutex_unlock(prop.time_mutex);
+        prepare_message_data_send prep_m;
+        prep_m.type = field_type;
+        pthread_mutex_lock(prop.map_mutex);
+        prep_m.size = (*prop.map_s).size() * (*prop.map_s)[0].size() * sizeof(field_cells_type);
+        n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
+        for (size_t i = 0; i < (*prop.map_s).size(); i++)
+            for (size_t j = 0; j < (*prop.map_s)[i].size(); j++)
+                buff[i * (*prop.map_s).size() + j] = (*prop.map_s)[i][j];
+        pthread_mutex_unlock(prop.map_mutex);
+        n = send(prop.sockfd, (field_cells_type *)buff, prep_m.size, 0);
+    }
+    delete[] buff;
+    return (void *)(0);
 }
 
 void *client_reciver(void *data)
@@ -38,11 +66,31 @@ void *client_reciver(void *data)
     pthread_t sender_start;
     pthread_create(&sender_start, NULL, client_sender, (void *)&prop);
 
-    int n = 1;
+    action_send input_act;
+    int n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     while (n)
     {
-        /* code */
+        switch (input_act.action)
+        {
+        case move:
+            pthread_mutex_lock(prop.map_mutex);
+            if ((*prop.map_s)[input_act.to_x][input_act.to_y] == empty)
+            {
+                (*prop.map_s)[input_act.from_x][input_act.from_y] = empty;
+                (*prop.map_s)[input_act.to_x][input_act.to_y] = player;
+                pthread_mutex_lock(prop.time_mutex);
+                gettimeofday(prop.update_time, NULL);
+                pthread_mutex_unlock(prop.time_mutex);
+            }
+            pthread_mutex_unlock(prop.map_mutex);
+            break;
+
+        default:
+            break;
+        }
+        n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     }
+    return (void *)(0);
 }
 
 void *main_client_thread(void *port)
@@ -50,7 +98,7 @@ void *main_client_thread(void *port)
     std::ifstream in("map.txt");
     int lines, colonums;
     in >> lines >> colonums;
-    std::vector<std::vector<uint8_t>> map_s(lines, std::vector<uint8_t>(colonums));
+    std::vector<std::vector<field_cells_type>> map_s(lines, std::vector<field_cells_type>(colonums));
     if (!in.is_open())
     {
         std::cout << "Map file not found\n";
@@ -60,7 +108,7 @@ void *main_client_thread(void *port)
         for (size_t j = 0; j < map_s[i].size(); j++)
             in >> map_s[i][j];
 
-    in.close(); 
+    in.close();
 
     struct timeval update_time;
     gettimeofday(&update_time, NULL);
@@ -90,16 +138,16 @@ void *main_client_thread(void *port)
 
     socklen_t servlen = sizeof(servaddr);
     listen(sockfd, 100);
-    std::cout << "Listening on port: %d\n", ntohs(servaddr.sin_port);
-    
+    getsockname(sockfd, (struct sockaddr *)&servaddr, &servlen);
+    std::cout << "Listening on port: " << ntohs(servaddr.sin_port) << std::endl;
+
     while (true)
     {
         struct sockaddr_in cliaddr;
         socklen_t clilen = sizeof(cliaddr);
         int newsockfd = accept(sockfd, (struct sockaddr *)&cliaddr, &clilen);
         thread_data *prop = new thread_data;
-        prop->cliaddr = cliaddr;
-        prop->sockfd = sockfd;
+        prop->sockfd = newsockfd;
         prop->map_mutex = &map_mutex;
         prop->map_s = &map_s;
         prop->time_mutex = &time_mutex;
@@ -107,6 +155,7 @@ void *main_client_thread(void *port)
         pthread_t client_start;
         pthread_create(&client_start, NULL, client_reciver, (void *)prop);
     }
+    return (void *)(0);
 }
 
 int main(int argc, char *argv[])
@@ -151,4 +200,5 @@ int main(int argc, char *argv[])
             std::cout << "Unknown command, please use help to get list of avalible commands\n";
         }
     }
+    return 0;
 }

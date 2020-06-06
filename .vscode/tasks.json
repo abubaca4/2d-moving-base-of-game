@@ -8,12 +8,16 @@
             "type": "shell",
             "command": "g++",
             "args": [
-                "-g", "-Og", // "debug" build
+                "-g",
+                "-Og", // "debug" build
                 //"-O3",
-                "${file}", 
-                "-march=native", "-Wall", "-pedantic",
+                "${file}",
+                "-march=native",
+                "-Wall",
+                "-pedantic",
                 "-std=c++17",
                 "-lSDL2",
+                "-lpthread",
                 "-o${fileBasenameNoExtension}"
             ],
             "group": {

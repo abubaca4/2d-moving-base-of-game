@@ -1,4 +1,5 @@
 #include "SDL2/SDL.h"
+
 #include <vector>
 #include <algorithm>
 
@@ -53,7 +54,7 @@ void boards(SDL_Renderer *renderer, const int w, const int h, const int lines, c
         SDL_RenderDrawLine(renderer, x_part * i, 0, x_part * i, h);
 }
 
-void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::vector<uint8_t>> &mat)
+void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::vector<field_cells_type>> &mat)
 {
     int h_side_len = h / mat.size();
     int w_side_len = w / mat[0].size();
@@ -67,12 +68,12 @@ void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::ve
                 break;
 
             case wall:
-                {
-                    SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-                    SDL_Rect rect = {w_side_len * (int)j, h_side_len * (int)i, w_side_len, h_side_len};
-                    SDL_RenderFillRect(renderer, &rect);
-                }
-                break;
+            {
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+                SDL_Rect rect = {w_side_len * (int)j, h_side_len * (int)i, w_side_len, h_side_len};
+                SDL_RenderFillRect(renderer, &rect);
+            }
+            break;
             default:
                 break;
             }
@@ -82,7 +83,7 @@ int main(int argc, char *argv[])
 {
     const int lines = 8;
     const int colonums = 8;
-    std::vector<std::vector<uint8_t>> mat(lines, std::vector<uint8_t>(colonums, empty));
+    std::vector<std::vector<field_cells_type>> mat(lines, std::vector<field_cells_type>(colonums, empty));
     size_t x = 0;
     size_t y = 0;
     mat[x][y] = player;
