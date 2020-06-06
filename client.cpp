@@ -177,6 +177,13 @@ int main(int argc, char *argv[])
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(port);
     inet_aton(ip, &(servaddr.sin_addr));
+
+    if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+    {
+        printf("Can't connect to server\n");
+        return 1;
+    }
+
     delete[] ip;
     int n = 1;
 
