@@ -89,7 +89,7 @@ void players_print(SDL_Renderer *renderer, const int w, const int h, const size_
         if (player_list[i].is_alive)
         {
             SDL_SetRenderDrawColor(renderer, player_list[i].r, player_list[i].g, player_list[i].b, SDL_ALPHA_OPAQUE);
-            DrawCircle(renderer, w_side_len * (player_list[i].y + 0.5), h_side_len * (player_list[i].x + 0.5), 0.8 * std::min(w_side_len, h_side_len) / 2);
+            DrawCircle(renderer, w_side_len * (player_list[i].x + 0.5), h_side_len * (player_list[i].y + 0.5), 0.8 * std::min(w_side_len, h_side_len) / 2);
         }
 }
 
