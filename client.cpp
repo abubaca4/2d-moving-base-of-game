@@ -287,6 +287,7 @@ int main(int argc, char *argv[])
                 if (!memcmp(&update_time, &last_time, sizeof(timeval)) && !need_review) //если карта не изменилась не отрисовывать снова, отрисовать снова если специальный флаг поднят
                 {
                     pthread_mutex_unlock(&time_mutex);
+                    usleep(1);
                     continue;
                 }
                 pthread_mutex_unlock(&time_mutex);
