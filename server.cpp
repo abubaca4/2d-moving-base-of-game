@@ -103,8 +103,8 @@ void *client_reciver(void *data)
         }
         n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     }
-    pthread_join(sender_start, (void **)&n); //перед удалением данных для потока убедится в завершении потока отслеживателя изменений
-    delete &prop;                            //удаление структуры с данными для потоков
+    pthread_cancel(sender_start); //перед удалением данных для потока завершить поток отслеживания изменений
+    delete &prop;                 //удаление структуры с данными для потоков
     return (void *)(0);
 }
 
