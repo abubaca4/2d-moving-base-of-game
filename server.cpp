@@ -22,9 +22,61 @@ struct thread_data
     int sockfd;
 };
 
+void *client_sender(void *data)
+{
+    thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
+    //структура с временем последней отправленной клиенту версии
+    struct timeval last_time;
+    last_time.tv_sec = last_time.tv_usec = 0; //равна 0 для того чтобы по старту в первый раз произошла отправка
+
+    int n = 1;
+
+    while (n)
+    {
+        pthread_mutex_lock(prop.time_mutex); //проверка обновления времени
+        if (!memcmp(prop.update_time, &last_time, sizeof(timeval)))
+        {
+            pthread_mutex_unlock(prop.time_mutex);
+            usleep(1);
+            continue; //пропуск при отсутствии изменений
+        }
+        last_time = *prop.update_time; //обновление времени
+        pthread_mutex_unlock(prop.time_mutex);
+        prepare_message_data_send prep_m; //сообщение с размерами поля
+        prep_m.type = field_type;
+        pthread_mutex_lock(prop.map_mutex);
+        prep_m.size = (*prop.map_s).size();
+        prep_m.second_size = (*prop.map_s)[0].size();
+        n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
+        for (size_t i = 0; i < (*prop.map_s).size(); i++) //отправка поля построчно
+            n = send(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
+        pthread_mutex_unlock(prop.map_mutex);
+    }
+    return (void *)(0);
+}
+
 void *client_reciver(void *data)
 {
     thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
+    //поиск свободной точки для игрока
+    pthread_mutex_lock(prop.map_mutex);
+    {
+        bool flag_found = false;
+        for (size_t i = 0; i < (*prop.map_s).size() && !flag_found; i++)
+            for (size_t j = 0; j < (*prop.map_s)[i].size() && !flag_found; j++)
+                if ((*prop.map_s)[i][j] == empty)
+                {
+                    (*prop.map_s)[i][j] = player;
+                    flag_found = true;
+                }
+    }
+    pthread_mutex_unlock(prop.map_mutex);
+    pthread_mutex_lock(prop.time_mutex); //время меняется на каждое изменение поля
+    gettimeofday(prop.update_time, NULL);
+    pthread_mutex_unlock(prop.time_mutex);
+
+    pthread_t sender_start; //запуск потока отслеживающего изменения поля и отсылающего клиенту
+    pthread_create(&sender_start, NULL, client_sender, (void *)&prop);
 
     action_send input_act;                                                        //переменная для получения действий игрока
     int n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0); //получение первого действи
@@ -51,61 +103,8 @@ void *client_reciver(void *data)
         }
         n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     }
-    return (void *)(0);
-}
-
-void *client_sender(void *data)
-{
-    thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
-    //структура с временем последней отправленной клиенту версии
-    struct timeval last_time;
-    last_time.tv_sec = last_time.tv_usec = 0; //равна 0 для того чтобы по старту в первый раз произошла отправка
-
-    //поиск свободной точки для игрока
-    pthread_mutex_lock(prop.map_mutex);
-    {
-        bool flag_found = false;
-        for (size_t i = 0; i < (*prop.map_s).size() && !flag_found; i++)
-            for (size_t j = 0; j < (*prop.map_s)[i].size() && !flag_found; j++)
-                if ((*prop.map_s)[i][j] == empty)
-                {
-                    (*prop.map_s)[i][j] = player;
-                    flag_found = true;
-                }
-    }
-    pthread_mutex_unlock(prop.map_mutex);
-    pthread_mutex_lock(prop.time_mutex); //время меняется на каждое изменение поля
-    gettimeofday(prop.update_time, NULL);
-    pthread_mutex_unlock(prop.time_mutex);
-
-    pthread_t reciver_start; //запуск потока получающего действия клиента
-    pthread_create(&reciver_start, NULL, client_reciver, (void *)&prop);
-
-    int n = 1;
-
-    while (n)
-    {
-        pthread_mutex_lock(prop.time_mutex); //проверка обновления времени
-        if (!memcmp(prop.update_time, &last_time, sizeof(timeval)))
-        {
-            pthread_mutex_unlock(prop.time_mutex);
-            usleep(1);
-            continue; //пропуск при отсутствии изменений
-        }
-        last_time = *prop.update_time; //обновление времени
-        pthread_mutex_unlock(prop.time_mutex);
-        prepare_message_data_send prep_m; //сообщение с размерами поля
-        prep_m.type = field_type;
-        pthread_mutex_lock(prop.map_mutex);
-        prep_m.size = (*prop.map_s).size();
-        prep_m.second_size = (*prop.map_s)[0].size();
-        n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
-        for (size_t i = 0; i < (*prop.map_s).size(); i++) //отправка поля построчно
-            n = send(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
-        pthread_mutex_unlock(prop.map_mutex);
-    }
-    pthread_cancel(reciver_start); //хавершить поток отслеживающий действия клиента после обрыва соединения
-    delete &prop;                  //удаление структуры с данными для потоков
+    pthread_join(sender_start, (void **)&n); //перед удалением данных для потока убедится в завершении потока отслеживателя изменений
+    delete &prop;                            //удаление структуры с данными для потоков
     return (void *)(0);
 }
 
@@ -180,7 +179,7 @@ void *main_client_thread(void *port)
         prop->update_time = &update_time;
         // запуск потока для клиента, нет необходимости хранить, завершит себя сам по потере соединения
         pthread_t client_start;
-        pthread_create(&client_start, NULL, client_sender, (void *)prop);
+        pthread_create(&client_start, NULL, client_reciver, (void *)prop);
     }
     return (void *)(0);
 }
