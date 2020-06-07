@@ -158,10 +158,10 @@ void *client_reciver(void *data)
     pthread_mutex_lock(prop.player_mutex);
     pthread_cancel(sender_start);                     //перед удалением данных для потока завершить поток отслеживания изменений
     (*prop.player_list)[prop.my_id].is_alive = false; //ячейка игрока более не занята
-    pthread_mutex_lock(prop.time_map_mutex);
-    pthread_mutex_lock(prop.time_player_mutex);
-    pthread_mutex_lock(prop.map_mutex);
-    pthread_mutex_lock(prop.player_mutex);
+    pthread_mutex_unlock(prop.time_map_mutex);
+    pthread_mutex_unlock(prop.time_player_mutex);
+    pthread_mutex_unlock(prop.map_mutex);
+    pthread_mutex_unlock(prop.player_mutex);
 
     pthread_mutex_lock(prop.player_count_mutex);
     (*prop.player_count_connected)--;
