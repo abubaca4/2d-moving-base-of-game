@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "SDL2/SDL.h"
 
@@ -85,6 +86,19 @@ void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::ve
             }
 }
 
+bool found_player(std::vector<std::vector<field_cells_type>> &mat, size_t &x, size_t &y) //поиск игрока на поле будет не актуален после введения списка игроков
+{
+    for (size_t i = 0; i < mat.size(); i++)
+        for (size_t j = 0; j < mat[i].size(); j++)
+            if (mat[i][j] == player)
+            {
+                y = i;
+                x = j;
+                return true;
+            }
+    return false;
+}
+
 struct thread_data //структура для передачи информации в поток не объявленна в общем заголовочном файле так как может быть разная для сервера и клиента
 {
     pthread_mutex_t *time_mutex;
@@ -124,19 +138,6 @@ void *reciver(void *data)
     }
 
     return (void *)(0);
-}
-
-bool found_player(std::vector<std::vector<field_cells_type>> &mat, size_t &x, size_t &y) //поиск игрока на поле будет не актуален после введения списка игроков
-{
-    for (size_t i = 0; i < mat.size(); i++)
-        for (size_t j = 0; j < mat[i].size(); j++)
-            if (mat[i][j] == player)
-            {
-                y = i;
-                x = j;
-                return true;
-            }
-    return false;
 }
 
 int main(int argc, char *argv[])
@@ -225,6 +226,12 @@ int main(int argc, char *argv[])
 
             while (!done && n) //пока не завершено или соединение не потеряно
             {
+                if (pthread_kill(reciver_thread, 0) != 0)
+                {
+                    n = 0;
+                    continue;
+                }
+
                 SDL_Event event;
 
                 while (SDL_PollEvent(&event))
