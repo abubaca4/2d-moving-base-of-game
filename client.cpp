@@ -99,27 +99,19 @@ void *reciver(void *data)
     thread_data &prop = *((thread_data *)data); //приведение указателя к ссылке
 
     prepare_message_data_send input_format; //для получения сообщения ингициализирующего передачу
-    int n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
-    if (input_format.type != field_size) //проверка если сервер не посылает сначала размер поля как должен то прекратить соединение
-        exit(1);
-    field_cells_type *buff = new field_cells_type[input_format.size * input_format.second_size]; //создание буфера для приёма поля
+    int n = 1;
 
     while (n) //пока соединение не разорванно
     {
-        switch (input_format.type) //в зависимости от типа передаваемых данных
+        n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0); //получение нового сообщения от сервера
+        switch (input_format.type)                                                                               //в зависимости от типа передаваемых данных
         {
-        case field_size: //создать поле нужного размера старое автоматически использует свой деструктор
-            pthread_mutex_lock(prop.map_mutex);
-            (*prop.map_s) = std::vector<std::vector<field_cells_type>>(input_format.size, std::vector<field_cells_type>(input_format.second_size));
-            pthread_mutex_unlock(prop.map_mutex);
-            break;
-
         case field_type:
-            n = recv(prop.sockfd, (field_cells_type *)buff, input_format.size, 0); //получить поле в буфер
+            if ((*prop.map_s).size() != input_format.size || (*prop.map_s)[0].size() != input_format.second_size)
+                *prop.map_s = std::vector<std::vector<field_cells_type>>(input_format.size, std::vector<field_cells_type>(input_format.second_size));
             pthread_mutex_lock(prop.map_mutex);
-            for (size_t i = 0; i < (*prop.map_s).size(); i++)
-                for (size_t j = 0; j < (*prop.map_s)[i].size(); j++)
-                    (*prop.map_s)[i][j] = buff[i * (*prop.map_s).size() + j]; //копирование данных из буфера в поле
+            for (size_t i = 0; i < (*prop.map_s).size(); i++) //получение поля построчно
+                n = recv(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
             pthread_mutex_unlock(prop.map_mutex);
             pthread_mutex_lock(prop.time_mutex);
             gettimeofday(prop.update_time, NULL); //обновление метки времени
@@ -129,10 +121,8 @@ void *reciver(void *data)
         default:
             break;
         }
-        n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0); //получение нового сообщения от сервера
     }
 
-    delete[] buff; //удаление буфера
     return (void *)(0);
 }
 

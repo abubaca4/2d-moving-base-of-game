@@ -20,8 +20,7 @@ struct action_send
 enum data_type_send
 {
     field_type = 0,
-    player_list = 1,
-    field_size = 2
+    player_list = 1
 };
 
 struct prepare_message_data_send

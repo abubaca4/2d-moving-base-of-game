@@ -28,17 +28,8 @@ void *client_sender(void *data)
     //структура с временем последней отправленной клиенту версии
     struct timeval last_time;
     last_time.tv_sec = last_time.tv_usec = 0; //равна 0 для того чтобы по старту в первый раз произошла отправка
-    //буфер данных для передачи, сделан из неумения передавать вектор, по хорошему надо либо передавать вектор либо пользоваться буфером как основным хранилищем
-    field_cells_type *buff = new field_cells_type[(*prop.map_s).size() * (*prop.map_s)[0].size()];
 
-    int n;
-    { //отправка размеров поля клиенту
-        prepare_message_data_send map_s_size;
-        map_s_size.type = field_size;
-        map_s_size.size = (*prop.map_s).size();
-        map_s_size.second_size = (*prop.map_s)[0].size();
-        n = send(prop.sockfd, (prepare_message_data_send *)&map_s_size, sizeof(prepare_message_data_send), 0);
-    }
+    int n = 1;
 
     while (n)
     {
@@ -49,20 +40,18 @@ void *client_sender(void *data)
             usleep(1);
             continue; //пропуск при отсутствии изменений
         }
-        last_time = (*prop.update_time); //обновление времени
+        last_time = *prop.update_time; //обновление времени
         pthread_mutex_unlock(prop.time_mutex);
-        prepare_message_data_send prep_m; //сообщение с длиной буфера
+        prepare_message_data_send prep_m; //сообщение с размерами поля
         prep_m.type = field_type;
         pthread_mutex_lock(prop.map_mutex);
-        prep_m.size = (*prop.map_s).size() * (*prop.map_s)[0].size() * sizeof(field_cells_type);
+        prep_m.size = (*prop.map_s).size();
+        prep_m.second_size = (*prop.map_s)[0].size();
         n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
-        for (size_t i = 0; i < (*prop.map_s).size(); i++) //перенос данных в буфер
-            for (size_t j = 0; j < (*prop.map_s)[i].size(); j++)
-                buff[i * (*prop.map_s).size() + j] = (*prop.map_s)[i][j];
+        for (size_t i = 0; i < (*prop.map_s).size(); i++) //отправка поля построчно
+            n = send(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
         pthread_mutex_unlock(prop.map_mutex);
-        n = send(prop.sockfd, (field_cells_type *)buff, prep_m.size, 0); //отправка буфера
     }
-    delete[] buff; //удаление буфера
     return (void *)(0);
 }
 
