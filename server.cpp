@@ -87,7 +87,7 @@ bool is_field_free(size_t x, size_t y, size_t my_id, std::vector<std::vector<fie
     if (map[y][x] == empty)
     {
         bool is_free = true;
-        for (size_t k = 0; y < player_list.size() && is_free; k++)                                                   //проверка не занята ли клетка одним из игроков
+        for (size_t k = 0; k < player_list.size() && is_free; k++)                                                   //проверка не занята ли клетка одним из игроков
             is_free = (k == my_id) || !player_list[k].is_alive || !(player_list[k].x == x && player_list[k].y == y); //занята самим игроком или проверяемый не активен или координаты не совпадают
         return is_free;
     }
