@@ -69,7 +69,7 @@ void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::ve
         for (size_t j = 0; j < mat[i].size(); j++)
             switch (mat[i][j])
             {
-            case player: //отрисовка круга для игрока
+            case player_start_index: //отрисовка круга для игрока
                 SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
                 DrawCircle(renderer, w_side_len * (j + 0.5), h_side_len * (i + 0.5), 0.8 * std::min(w / mat[i].size(), h / mat.size()) / 2);
                 break;
@@ -84,19 +84,6 @@ void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::ve
             default:
                 break;
             }
-}
-
-bool found_player(std::vector<std::vector<field_cells_type>> &mat, size_t &x, size_t &y) //поиск игрока на поле будет не актуален после введения списка игроков
-{
-    for (size_t i = 0; i < mat.size(); i++)
-        for (size_t j = 0; j < mat[i].size(); j++)
-            if (mat[i][j] == player)
-            {
-                y = i;
-                x = j;
-                return true;
-            }
-    return false;
 }
 
 struct thread_data //структура для передачи информации в поток не объявленна в общем заголовочном файле так как может быть разная для сервера и клиента
@@ -138,6 +125,19 @@ void *reciver(void *data)
     }
 
     return (void *)(0);
+}
+
+bool found_player(std::vector<std::vector<field_cells_type>> &mat, size_t &x, size_t &y) //поиск игрока на поле будет не актуален после введения списка игроков
+{
+    for (size_t i = 0; i < mat.size(); i++)
+        for (size_t j = 0; j < mat[i].size(); j++)
+            if (mat[i][j] == player_start_index)
+            {
+                y = i;
+                x = j;
+                return true;
+            }
+    return false;
 }
 
 int main(int argc, char *argv[])

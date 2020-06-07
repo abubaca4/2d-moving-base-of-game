@@ -15,65 +15,112 @@
 
 struct thread_data
 {
-    pthread_mutex_t *time_mutex;
-    struct timeval *update_time;
+    pthread_mutex_t *time_map_mutex;
+    struct timeval *update_map_time;
+    pthread_mutex_t *time_player_mutex;
+    struct timeval *update_player_time;
     pthread_mutex_t *map_mutex;
     std::vector<std::vector<field_cells_type>> *map_s;
+    pthread_mutex_t *player_mutex;
+    std::vector<player> *player_list;
+    pthread_mutex_t *player_count_mutex;
+    size_t *player_count_connected;
     int sockfd;
+    size_t my_id;
 };
 
 void *client_sender(void *data)
 {
     thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
     //структура с временем последней отправленной клиенту версии
-    struct timeval last_time;
-    last_time.tv_sec = last_time.tv_usec = 0; //равна 0 для того чтобы по старту в первый раз произошла отправка
-
-    int n = 1;
+    struct timeval last_time_map, last_time_player;
+    last_time_map.tv_sec = last_time_map.tv_usec = 0; //равна 0 для того чтобы по старту в первый раз произошла отправка
+    last_time_player = last_time_map;
+    prepare_message_data_send prep_m;  //подготовительное сообщение с типом посылаемых данных
+    prep_m.type = my_number_from_list; //отправка номера этого клиента
+    prep_m.size = prop.my_id;
+    int n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
 
     while (n)
     {
-        pthread_mutex_lock(prop.time_mutex); //проверка обновления времени
-        if (!memcmp(prop.update_time, &last_time, sizeof(timeval)))
+        pthread_mutex_lock(prop.time_map_mutex);                           //проверка обновления времени
+        if (memcmp(prop.update_map_time, &last_time_map, sizeof(timeval))) //если карта обновилась
         {
-            pthread_mutex_unlock(prop.time_mutex);
-            usleep(1);
-            continue; //пропуск при отсутствии изменений
+            last_time_map = *prop.update_map_time; //обновление времени
+            pthread_mutex_unlock(prop.time_map_mutex);
+            prep_m.type = field_type;
+            pthread_mutex_lock(prop.map_mutex);
+            prep_m.size = (*prop.map_s).size();
+            prep_m.second_size = (*prop.map_s)[0].size();
+            n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
+            for (size_t i = 0; i < (*prop.map_s).size(); i++) //отправка поля построчно
+                n = send(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
+            pthread_mutex_unlock(prop.map_mutex);
         }
-        last_time = *prop.update_time; //обновление времени
-        pthread_mutex_unlock(prop.time_mutex);
-        prepare_message_data_send prep_m; //сообщение с размерами поля
-        prep_m.type = field_type;
-        pthread_mutex_lock(prop.map_mutex);
-        prep_m.size = (*prop.map_s).size();
-        prep_m.second_size = (*prop.map_s)[0].size();
-        n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
-        for (size_t i = 0; i < (*prop.map_s).size(); i++) //отправка поля построчно
-            n = send(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
-        pthread_mutex_unlock(prop.map_mutex);
+        else
+            pthread_mutex_unlock(prop.time_map_mutex);
+        pthread_mutex_lock(prop.time_player_mutex);
+        if (memcmp(prop.update_player_time, &last_time_player, sizeof(timeval))) //если список игроков обновился
+        {
+            last_time_player = *prop.update_player_time;
+            pthread_mutex_unlock(prop.time_player_mutex);
+            prep_m.type = player_list;
+            pthread_mutex_lock(prop.player_mutex);
+            prep_m.size = (*prop.player_list).size();
+            n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
+            n = send(prop.sockfd, (player *)prop.player_list->data(), (*prop.player_list).size() * sizeof(player), 0);
+            pthread_mutex_unlock(prop.player_mutex);
+        }
+        else
+            pthread_mutex_unlock(prop.time_player_mutex);
+
+        usleep(1);
     }
     return (void *)(0);
+}
+
+bool is_field_free(size_t x, size_t y, size_t my_id, std::vector<std::vector<field_cells_type>> &map, std::vector<player> &player_list)
+{
+    if (!(x < map[0].size() && y < map.size())) //проверка не покидания пределов поля и свободности ячейки. не может быть меньше 0 беззнаковый тип
+        return false;
+
+    if (map[y][x] == empty)
+    {
+        bool is_free = true;
+        for (size_t k = 0; y < player_list.size() && is_free; k++)                                                   //проверка не занята ли клетка одним из игроков
+            is_free = (k == my_id) || !player_list[k].is_alive || !(player_list[k].x == x && player_list[k].y == y); //занята самим игроком или проверяемый не активен или координаты не совпадают
+        return is_free;
+    }
+    return false;
 }
 
 void *client_reciver(void *data)
 {
     thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
-    //поиск свободной точки для игрока
-    pthread_mutex_lock(prop.map_mutex);
-    {
-        bool flag_found = false;
-        for (size_t i = 0; i < (*prop.map_s).size() && !flag_found; i++)
-            for (size_t j = 0; j < (*prop.map_s)[i].size() && !flag_found; j++)
-                if ((*prop.map_s)[i][j] == empty)
-                {
-                    (*prop.map_s)[i][j] = player;
-                    flag_found = true;
-                }
-    }
-    pthread_mutex_unlock(prop.map_mutex);
-    pthread_mutex_lock(prop.time_mutex); //время меняется на каждое изменение поля
-    gettimeofday(prop.update_time, NULL);
-    pthread_mutex_unlock(prop.time_mutex);
+    //поиск свободной ячейки для игрока
+    pthread_mutex_lock(prop.player_mutex);
+    for (size_t k = 0; k < prop.player_list->size(); k++)
+        if (!(*prop.player_list)[k].is_alive)
+        {
+            bool flag_found = false;
+            prop.my_id = (*prop.player_list)[k].id;
+            pthread_mutex_lock(prop.map_mutex);
+            for (size_t i = 0; i < (*prop.map_s).size() && !flag_found; i++)
+                for (size_t j = 0; j < (*prop.map_s)[i].size() && !flag_found; j++)
+                    if (is_field_free(j, i, prop.my_id, *prop.map_s, *prop.player_list))
+                    {
+                        flag_found = true;
+                        (*prop.player_list)[prop.my_id].x = j;
+                        (*prop.player_list)[prop.my_id].y = i;
+                    }
+            pthread_mutex_unlock(prop.map_mutex);
+            (*prop.player_list)[prop.my_id].is_alive = true;
+            break;
+        }
+    pthread_mutex_unlock(prop.player_mutex);
+    pthread_mutex_lock(prop.time_player_mutex); //время меняется на каждое изменение
+    gettimeofday(prop.update_player_time, NULL);
+    pthread_mutex_unlock(prop.time_player_mutex);
 
     pthread_t sender_start; //запуск потока отслеживающего изменения поля и отсылающего клиенту
     pthread_create(&sender_start, NULL, client_sender, (void *)&prop);
@@ -86,15 +133,16 @@ void *client_reciver(void *data)
         {
         case move:
             pthread_mutex_lock(prop.map_mutex);
-            //проверка не покидания пределов поля и свободности ячейки. не может быть меньше 0 беззнаковый тип
-            if (input_act.to_x < (*prop.map_s)[0].size() && input_act.to_y < (*prop.map_s).size() && (*prop.map_s)[input_act.to_y][input_act.to_x] == empty)
+            pthread_mutex_lock(prop.player_mutex);
+            if (input_act.from_x == (*prop.player_list)[prop.my_id].x && input_act.from_y == (*prop.player_list)[prop.my_id].y && is_field_free(input_act.to_x, input_act.to_y, prop.my_id, *prop.map_s, *prop.player_list))
             {
-                (*prop.map_s)[input_act.from_y][input_act.from_x] = empty;
-                (*prop.map_s)[input_act.to_y][input_act.to_x] = player;
-                pthread_mutex_lock(prop.time_mutex);
-                gettimeofday(prop.update_time, NULL);
-                pthread_mutex_unlock(prop.time_mutex);
+                (*prop.player_list)[prop.my_id].x = input_act.to_x;
+                (*prop.player_list)[prop.my_id].y = input_act.to_y;
+                pthread_mutex_lock(prop.time_player_mutex);
+                gettimeofday(prop.update_player_time, NULL);
+                pthread_mutex_unlock(prop.time_player_mutex);
             }
+            pthread_mutex_unlock(prop.player_mutex);
             pthread_mutex_unlock(prop.map_mutex);
             break;
 
@@ -103,8 +151,22 @@ void *client_reciver(void *data)
         }
         n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     }
-    pthread_cancel(sender_start); //перед удалением данных для потока завершить поток отслеживания изменений
-    delete &prop;                 //удаление структуры с данными для потоков
+
+    pthread_mutex_lock(prop.time_map_mutex); //закрыть все мьютексы чтобы не закрыть поток следящий за изменением в тот момент когда он имеет заблокированный мьютекс
+    pthread_mutex_lock(prop.time_player_mutex);
+    pthread_mutex_lock(prop.map_mutex);
+    pthread_mutex_lock(prop.player_mutex);
+    pthread_cancel(sender_start);                     //перед удалением данных для потока завершить поток отслеживания изменений
+    (*prop.player_list)[prop.my_id].is_alive = false; //ячейка игрока более не занята
+    pthread_mutex_lock(prop.time_map_mutex);
+    pthread_mutex_lock(prop.time_player_mutex);
+    pthread_mutex_lock(prop.map_mutex);
+    pthread_mutex_lock(prop.player_mutex);
+
+    pthread_mutex_lock(prop.player_count_mutex);
+    (*prop.player_count_connected)--;
+    pthread_mutex_unlock(prop.player_count_mutex);
+    delete &prop; //удаление структуры с данными для потоков
     return (void *)(0);
 }
 
@@ -131,15 +193,45 @@ void *main_client_thread(void *port)
                 map_s[i][j] = temp;
             }
     }
-    in.close(); //закрытие файла
+    in.close();                    //закрытие файла
+    in.open("player_collors.txt"); //файл с цветами игроков
+    if (!in.is_open())             //выход если открытие файла не успешно
+    {
+        std::cout << "Collor file not found\n";
+        exit(3);
+    }
+    size_t player_limit_count;
+    in >> player_limit_count;
+    std::vector<player> player_list(player_limit_count); //список игроков
+    for (size_t i = 0; i < player_limit_count; i++)      //чтение цветов и заполнение полей по умолчанию
+    {
+        size_t r, g, b;
+        in >> r >> g >> b;
+        player_list[i].r = r;
+        player_list[i].g = g;
+        player_list[i].b = b;
+        player_list[i].x = player_list[i].y = 0;
+        player_list[i].id = i;
+        player_list[i].is_alive = false; //соединён ли игрок
+    }
+    in.close();
+
     // время последнего обновления карты для детекции изменений
-    struct timeval update_time;
-    gettimeofday(&update_time, NULL);
-    pthread_mutex_t time_mutex;
-    pthread_mutex_init(&time_mutex, NULL);
+    struct timeval update_map_time;
+    gettimeofday(&update_map_time, NULL);
+    pthread_mutex_t time_map_mutex;
+    pthread_mutex_init(&time_map_mutex, NULL);
+    // время последнего изменения в списке игроков
+    struct timeval update_player_time;
+    gettimeofday(&update_player_time, NULL);
+    pthread_mutex_t time_player_mutex;
+    pthread_mutex_init(&time_player_mutex, NULL);
     //мьютекс для одновременного доступа к карте только 1 потока
     pthread_mutex_t map_mutex;
     pthread_mutex_init(&map_mutex, NULL);
+    //мьютекс для одновременного доступа к списку игроков 1 потока
+    pthread_mutex_t player_mutex;
+    pthread_mutex_init(&player_mutex, NULL);
 
     int sockfd;
     struct sockaddr_in servaddr;
@@ -163,6 +255,11 @@ void *main_client_thread(void *port)
     listen(sockfd, 100);
     getsockname(sockfd, (struct sockaddr *)&servaddr, &servlen);
     std::cout << "Listening on port: " << ntohs(servaddr.sin_port) << std::endl;
+    //число подключённых игроков
+    size_t player_count_connected = 0;
+    //мьютекс для числа подключённых игроков
+    pthread_mutex_t player_count_mutex;
+    pthread_mutex_init(&player_count_mutex, NULL);
 
     while (true)
     {
@@ -170,13 +267,31 @@ void *main_client_thread(void *port)
         socklen_t clilen = sizeof(cliaddr);
         //ожидание нового клиента
         int newsockfd = accept(sockfd, (struct sockaddr *)&cliaddr, &clilen);
+        pthread_mutex_lock(&player_count_mutex);
+        if (player_count_connected == player_limit_count)
+        {
+            pthread_mutex_unlock(&player_count_mutex);
+            continue;
+        }
+        else
+        {
+            player_count_connected++;
+            pthread_mutex_unlock(&player_count_mutex);
+        }
+
         //сохранение данных необходимых для работы ротока, удаляются потоком
         thread_data *prop = new thread_data;
-        prop->sockfd = newsockfd;
+        prop->time_map_mutex = &time_map_mutex;
+        prop->update_map_time = &update_map_time;
+        prop->time_player_mutex = &time_player_mutex;
+        prop->update_player_time = &update_player_time;
         prop->map_mutex = &map_mutex;
         prop->map_s = &map_s;
-        prop->time_mutex = &time_mutex;
-        prop->update_time = &update_time;
+        prop->player_mutex = &player_mutex;
+        prop->player_list = &player_list;
+        prop->player_count_mutex = &player_count_mutex;
+        prop->player_count_connected = &player_count_connected;
+        prop->sockfd = newsockfd;
         // запуск потока для клиента, нет необходимости хранить, завершит себя сам по потере соединения
         pthread_t client_start;
         pthread_create(&client_start, NULL, client_reciver, (void *)prop);

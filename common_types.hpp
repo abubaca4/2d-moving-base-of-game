@@ -3,7 +3,7 @@ enum field
 {
     empty = 0,
     wall = 1,
-    player = 2
+    player_start_index = 2
 };
 
 enum actions
@@ -20,7 +20,8 @@ struct action_send
 enum data_type_send
 {
     field_type = 0,
-    player_list = 1
+    player_list = 1,
+    my_number_from_list = 2
 };
 
 struct prepare_message_data_send
@@ -30,3 +31,11 @@ struct prepare_message_data_send
 };
 
 #define field_cells_type uint8_t
+
+struct player
+{
+    size_t id;
+    size_t x, y;
+    uint8_t r, g, b;
+    bool is_alive;
+};
