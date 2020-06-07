@@ -99,12 +99,11 @@ void *reciver(void *data)
     thread_data &prop = *((thread_data *)data); //приведение указателя к ссылке
 
     prepare_message_data_send input_format; //для получения сообщения ингициализирующего передачу
-    int n = 1;
+    int n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0);
 
     while (n) //пока соединение не разорванно
     {
-        n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0); //получение нового сообщения от сервера
-        switch (input_format.type)                                                                               //в зависимости от типа передаваемых данных
+        switch (input_format.type) //в зависимости от типа передаваемых данных
         {
         case field_type:
             if ((*prop.map_s).size() != input_format.size || (*prop.map_s)[0].size() != input_format.second_size)
@@ -121,6 +120,7 @@ void *reciver(void *data)
         default:
             break;
         }
+        n = recv(prop.sockfd, (prepare_message_data_send *)&input_format, sizeof(prepare_message_data_send), 0); //получение нового сообщения от сервера
     }
 
     return (void *)(0);
