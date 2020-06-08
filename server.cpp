@@ -50,11 +50,11 @@ void *client_sender(void *data)
             pthread_mutex_unlock(prop.time_map_mutex);
             prep_m.type = field_type;
             pthread_mutex_lock(prop.map_mutex);
-            prep_m.size = (*prop.map_s).size();
-            prep_m.second_size = (*prop.map_s)[0].size();
+            prep_m.size = prop.map_s->size();
+            prep_m.second_size = prop.map_s->at(0).size();
             n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
-            for (size_t i = 0; i < (*prop.map_s).size(); i++) //отправка поля построчно
-                n = send(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
+            for (size_t i = 0; i < prop.map_s->size(); i++) //отправка поля построчно
+                n = send(prop.sockfd, (field_cells_type *)prop.map_s->at(i).data(), prop.map_s->at(i).size() * sizeof(field_cells_type), 0);
             pthread_mutex_unlock(prop.map_mutex);
         }
         else
@@ -66,9 +66,9 @@ void *client_sender(void *data)
             pthread_mutex_unlock(prop.time_player_mutex);
             prep_m.type = player_list;
             pthread_mutex_lock(prop.player_mutex);
-            prep_m.size = (*prop.player_list).size();
+            prep_m.size = prop.player_list->size();
             n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
-            n = send(prop.sockfd, (player *)prop.player_list->data(), (*prop.player_list).size() * sizeof(player), 0);
+            n = send(prop.sockfd, (player *)prop.player_list->data(), prop.player_list->size() * sizeof(player), 0);
             pthread_mutex_unlock(prop.player_mutex);
         }
         else
@@ -100,21 +100,21 @@ void *client_reciver(void *data)
     //поиск свободной ячейки для игрока
     pthread_mutex_lock(prop.player_mutex);
     for (size_t k = 0; k < prop.player_list->size(); k++)
-        if (!(*prop.player_list)[k].is_alive)
+        if (!prop.player_list->at(k).is_alive)
         {
             bool flag_found = false;
-            prop.my_id = (*prop.player_list)[k].id;
+            prop.my_id = prop.player_list->at(k).id;
             pthread_mutex_lock(prop.map_mutex);
-            for (size_t i = 0; i < (*prop.map_s).size() && !flag_found; i++)
-                for (size_t j = 0; j < (*prop.map_s)[i].size() && !flag_found; j++)
+            for (size_t i = 0; i < prop.map_s->size() && !flag_found; i++)
+                for (size_t j = 0; j < prop.map_s->at(i).size() && !flag_found; j++)
                     if (is_field_free(j, i, prop.my_id, *prop.map_s, *prop.player_list))
                     {
                         flag_found = true;
-                        (*prop.player_list)[prop.my_id].x = j;
-                        (*prop.player_list)[prop.my_id].y = i;
+                        prop.player_list->at(prop.my_id).x = j;
+                        prop.player_list->at(prop.my_id).y = i;
                     }
             pthread_mutex_unlock(prop.map_mutex);
-            (*prop.player_list)[prop.my_id].is_alive = true;
+            prop.player_list->at(prop.my_id).is_alive = true;
             break;
         }
     pthread_mutex_unlock(prop.player_mutex);
@@ -134,10 +134,10 @@ void *client_reciver(void *data)
         case move:
             pthread_mutex_lock(prop.map_mutex);
             pthread_mutex_lock(prop.player_mutex);
-            if (input_act.from_x == (*prop.player_list)[prop.my_id].x && input_act.from_y == (*prop.player_list)[prop.my_id].y && is_field_free(input_act.to_x, input_act.to_y, prop.my_id, *prop.map_s, *prop.player_list))
+            if (input_act.from_x == prop.player_list->at(prop.my_id).x && input_act.from_y == prop.player_list->at(prop.my_id).y && is_field_free(input_act.to_x, input_act.to_y, prop.my_id, *prop.map_s, *prop.player_list))
             {
-                (*prop.player_list)[prop.my_id].x = input_act.to_x;
-                (*prop.player_list)[prop.my_id].y = input_act.to_y;
+                prop.player_list->at(prop.my_id).x = input_act.to_x;
+                prop.player_list->at(prop.my_id).y = input_act.to_y;
                 pthread_mutex_lock(prop.time_player_mutex);
                 gettimeofday(prop.update_player_time, NULL);
                 pthread_mutex_unlock(prop.time_player_mutex);
@@ -156,8 +156,8 @@ void *client_reciver(void *data)
     pthread_mutex_lock(prop.time_player_mutex);
     pthread_mutex_lock(prop.map_mutex);
     pthread_mutex_lock(prop.player_mutex);
-    pthread_cancel(sender_start);                     //перед удалением данных для потока завершить поток отслеживания изменений
-    (*prop.player_list)[prop.my_id].is_alive = false; //ячейка игрока более не занята
+    pthread_cancel(sender_start);                      //перед удалением данных для потока завершить поток отслеживания изменений
+    prop.player_list->at(prop.my_id).is_alive = false; //ячейка игрока более не занята
     gettimeofday(prop.update_player_time, NULL);
     pthread_mutex_unlock(prop.time_map_mutex);
     pthread_mutex_unlock(prop.time_player_mutex);

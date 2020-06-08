@@ -118,10 +118,10 @@ void *reciver(void *data)
         {
         case field_type:
             pthread_mutex_lock(prop.map_mutex);
-            if ((*prop.map_s).size() != input_format.size || (*prop.map_s)[0].size() != input_format.second_size)
+            if (prop.map_s->size() != input_format.size || prop.map_s->at(0).size() != input_format.second_size)
                 *prop.map_s = std::vector<std::vector<field_cells_type>>(input_format.size, std::vector<field_cells_type>(input_format.second_size));
-            for (size_t i = 0; i < (*prop.map_s).size(); i++) //получение поля построчно
-                n = recv(prop.sockfd, (field_cells_type *)(*prop.map_s)[i].data(), (*prop.map_s)[i].size() * sizeof(field_cells_type), 0);
+            for (size_t i = 0; i < prop.map_s->size(); i++) //получение поля построчно
+                n = recv(prop.sockfd, (field_cells_type *)prop.map_s->at(i).data(), prop.map_s->at(i).size() * sizeof(field_cells_type), 0);
             pthread_mutex_unlock(prop.map_mutex);
             pthread_mutex_lock(prop.time_mutex);
             gettimeofday(prop.update_time, NULL); //обновление метки времени
