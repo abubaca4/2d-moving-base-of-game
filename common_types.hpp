@@ -2,8 +2,7 @@
 enum field
 {
     empty = 0,
-    wall = 1,
-    player_start_index = 2
+    wall = 1
 };
 
 enum actions
