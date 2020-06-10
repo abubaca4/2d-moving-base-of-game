@@ -33,12 +33,30 @@ void map_s(SDL_Renderer *renderer, const int w, const int h, std::vector<std::ve
             switch (mat[i][j])
             {
             case wall: //отрисовка чёрного прямоугольника для стены
-            {
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-                SDL_Rect rect = {w_side_len * (int)j, h_side_len * (int)i, w_side_len, h_side_len};
-                SDL_RenderFillRect(renderer, &rect);
-            }
-            break;
+                boxRGBA(renderer, w_side_len * (int)j, h_side_len * (int)i, w_side_len * (int)(j + 1), h_side_len * (int)(i + 1), 0, 0, 0, SDL_ALPHA_OPAQUE);
+                break;
+
+            case door_lock:
+                boxRGBA(renderer, w_side_len * (int)j, h_side_len * (int)i, w_side_len * (int)(j + 1), h_side_len * (int)(i + 1), 0, 0, 0, SDL_ALPHA_OPAQUE);
+                circleRGBA(renderer, w_side_len * (j + 0.5), h_side_len * (i + 0.5), std::min(w_side_len, h_side_len) / 2, 255, 0, 0, SDL_ALPHA_OPAQUE);
+                break;
+
+            case door_open:
+                boxRGBA(renderer, w_side_len * (int)j, h_side_len * (int)i, w_side_len * (int)(j + 1), h_side_len * (int)(i + 1), 0, 0, 0, SDL_ALPHA_OPAQUE);
+                filledCircleRGBA(renderer, w_side_len * (j + 0.5), h_side_len * (i + 0.5), std::min(w_side_len, h_side_len) / 2, 255, 255, 255, SDL_ALPHA_OPAQUE);
+                circleRGBA(renderer, w_side_len * (j + 0.5), h_side_len * (i + 0.5), std::min(w_side_len, h_side_len) / 2, 255, 0, 0, SDL_ALPHA_OPAQUE);
+                break;
+
+            case trap_on:
+                lineRGBA(renderer, w_side_len * (int)j, h_side_len * (int)i, w_side_len * (int)(j + 1), h_side_len * (int)(i + 1), 255, 0, 0, SDL_ALPHA_OPAQUE);
+                lineRGBA(renderer, w_side_len * (int)j, h_side_len * (int)(i + 1), w_side_len * (int)(j + 1), h_side_len * (int)i, 255, 0, 0, SDL_ALPHA_OPAQUE);
+                break;
+
+            case coin:
+                filledCircleRGBA(renderer, w_side_len * (j + 0.5), h_side_len * (i + 0.5), std::min(w_side_len, h_side_len) / 4, 255, 215, 0, SDL_ALPHA_OPAQUE);
+                filledCircleRGBA(renderer, w_side_len * (j + 0.5), h_side_len * (i + 0.5), std::min(w_side_len, h_side_len) / 7, 255, 255, 255, SDL_ALPHA_OPAQUE);
+                break;
+
             default:
                 break;
             }
@@ -234,7 +252,6 @@ int main(int argc, char *argv[])
                     else if (event.type == SDL_KEYDOWN)
                     {
                         struct action_send temp; //отправка действий на сервер
-                        temp.action = move;
                         pthread_mutex_lock(&player_mutex);
                         size_t x = player_list[share_data.my_id].x;
                         size_t y = player_list[share_data.my_id].y;
@@ -247,26 +264,61 @@ int main(int argc, char *argv[])
                         case SDLK_UP:
                             temp.to_x = x;
                             temp.to_y = y - 1;
+                            temp.action = move;
                             n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
                             break;
 
                         case SDLK_DOWN:
                             temp.to_x = x;
                             temp.to_y = y + 1;
+                            temp.action = move;
                             n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
                             break;
 
                         case SDLK_LEFT:
                             temp.to_x = x - 1;
                             temp.to_y = y;
+                            temp.action = move;
                             n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
                             break;
 
                         case SDLK_RIGHT:
                             temp.to_x = x + 1;
                             temp.to_y = y;
+                            temp.action = move;
                             n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
                             break;
+
+                        case SDLK_r:
+                            temp.action = doorAction;
+                            pthread_mutex_lock(&map_mutex);
+                            if (y - 1 < mat.size() && (mat[y - 1][x] == door_open || mat[y - 1][x] == door_lock))
+                            {
+                                temp.to_x = x;
+                                temp.to_y = y - 1;
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            }
+                            else if (y + 1 < mat.size() && (mat[y + 1][x] == door_open || mat[y + 1][x] == door_lock))
+                            {
+                                temp.to_x = x;
+                                temp.to_y = y + 1;
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            }
+                            else if (x - 1 < mat[y].size() && (mat[y][x - 1] == door_open || mat[y][x - 1] == door_lock))
+                            {
+                                temp.to_x = x - 1;
+                                temp.to_y = y;
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            }
+                            else if (x + 1 < mat[y].size() && (mat[y][x + 1] == door_open || mat[y][x + 1] == door_lock))
+                            {
+                                temp.to_x = x + 1;
+                                temp.to_y = y;
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            }
+                            pthread_mutex_unlock(&map_mutex);
+                            break;
+
                         default:
                             break;
                         }

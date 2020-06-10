@@ -2,12 +2,18 @@
 enum field
 {
     empty = 0,
-    wall = 1
+    wall = 1,
+    door_lock = 2,
+    door_open = 3,
+    trap = 4,
+    trap_on = 5,
+    coin = 6
 };
 
 enum actions
 {
-    move = 0
+    move = 0,
+    doorAction = 1
 };
 
 struct action_send

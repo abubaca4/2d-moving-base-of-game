@@ -79,19 +79,12 @@ void *client_sender(void *data)
     return (void *)(0);
 }
 
-bool is_field_free(size_t x, size_t y, size_t my_id, std::vector<std::vector<field_cells_type>> &map, std::vector<player> &player_list)
+bool is_field_free_player(size_t x, size_t y, size_t my_id, std::vector<player> &player_list) //свободно ли поле от другого игрока
 {
-    if (!(x < map[0].size() && y < map.size())) //проверка не покидания пределов поля и свободности ячейки. не может быть меньше 0 беззнаковый тип
-        return false;
-
-    if (map[y][x] == empty)
-    {
-        bool is_free = true;
-        for (size_t k = 0; k < player_list.size() && is_free; k++)                                                   //проверка не занята ли клетка одним из игроков
-            is_free = (k == my_id) || !player_list[k].is_alive || !(player_list[k].x == x && player_list[k].y == y); //занята самим игроком или проверяемый не активен или координаты не совпадают
-        return is_free;
-    }
-    return false;
+    bool is_free = true;
+    for (size_t k = 0; k < player_list.size() && is_free; k++)                                                   //проверка не занята ли клетка одним из игроков
+        is_free = (k == my_id) || !player_list[k].is_alive || !(player_list[k].x == x && player_list[k].y == y); //занята самим игроком или проверяемый не активен или координаты не совпадают
+    return is_free;
 }
 
 void *client_reciver(void *data)
@@ -107,7 +100,7 @@ void *client_reciver(void *data)
             pthread_mutex_lock(prop.map_mutex);
             for (size_t i = 0; i < prop.map_s->size() && !flag_found; i++)
                 for (size_t j = 0; j < prop.map_s->at(i).size() && !flag_found; j++)
-                    if (is_field_free(j, i, prop.my_id, *prop.map_s, *prop.player_list))
+                    if (is_field_free_player(j, i, prop.my_id, *prop.player_list) && prop.map_s->at(j)[i] == empty)
                     {
                         flag_found = true;
                         prop.player_list->at(prop.my_id).x = j;
@@ -129,26 +122,59 @@ void *client_reciver(void *data)
     int n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0); //получение первого действи
     while (n)                                                                     //если n==0 соединение разорвано
     {
-        switch (input_act.action) //для возможности добавления новых действий
+        pthread_mutex_lock(prop.player_mutex);
+        if (input_act.from_x == prop.player_list->at(prop.my_id).x && input_act.from_y == prop.player_list->at(prop.my_id).y) //правильно ли текущее местоположение игрока что знает клиент
         {
-        case move:
-            pthread_mutex_lock(prop.map_mutex);
-            pthread_mutex_lock(prop.player_mutex);
-            if (input_act.from_x == prop.player_list->at(prop.my_id).x && input_act.from_y == prop.player_list->at(prop.my_id).y && is_field_free(input_act.to_x, input_act.to_y, prop.my_id, *prop.map_s, *prop.player_list))
-            {
-                prop.player_list->at(prop.my_id).x = input_act.to_x;
-                prop.player_list->at(prop.my_id).y = input_act.to_y;
-                pthread_mutex_lock(prop.time_player_mutex);
-                gettimeofday(prop.update_player_time, NULL);
-                pthread_mutex_unlock(prop.time_player_mutex);
-            }
             pthread_mutex_unlock(prop.player_mutex);
-            pthread_mutex_unlock(prop.map_mutex);
-            break;
 
-        default:
-            break;
+            switch (input_act.action) //для возможности добавления новых действий
+            {
+            case move:
+                if (!(input_act.to_x < prop.map_s->at(0).size() && input_act.to_y < prop.map_s->size())) //не выходит ли точка назначения за пределы карты
+                    break;
+                pthread_mutex_lock(prop.map_mutex);
+                switch (prop.map_s->at(input_act.to_y)[input_act.to_x]) //в зависимости от того в какую точку идёт игрок
+                {
+                case empty:
+                case door_open:
+                    pthread_mutex_lock(prop.player_mutex);
+                    if (is_field_free_player(input_act.to_x, input_act.to_y, prop.my_id, *prop.player_list)) //если поле свободно от другого игрока
+                    {
+                        prop.player_list->at(prop.my_id).x = input_act.to_x;
+                        prop.player_list->at(prop.my_id).y = input_act.to_y;
+                        pthread_mutex_lock(prop.time_player_mutex);
+                        gettimeofday(prop.update_player_time, NULL);
+                        pthread_mutex_unlock(prop.time_player_mutex);
+                    }
+                    pthread_mutex_unlock(prop.player_mutex);
+                    break;
+
+                default:
+                    break;
+                }
+                pthread_mutex_unlock(prop.map_mutex);
+                break;
+
+            case doorAction:
+                pthread_mutex_lock(prop.player_mutex);
+                pthread_mutex_lock(prop.map_mutex);
+                if (is_field_free_player(input_act.to_x, input_act.to_y, prop.my_id, *prop.player_list) && (prop.map_s->at(input_act.to_y)[input_act.to_x] == door_open || prop.map_s->at(input_act.to_y)[input_act.to_x] == door_lock))
+                {
+                    prop.map_s->at(input_act.to_y)[input_act.to_x] = prop.map_s->at(input_act.to_y)[input_act.to_x] == door_open ? door_lock : door_open;
+                    pthread_mutex_lock(prop.time_map_mutex);
+                    gettimeofday(prop.update_map_time, NULL);
+                    pthread_mutex_unlock(prop.time_map_mutex);
+                }
+                pthread_mutex_unlock(prop.player_mutex);
+                pthread_mutex_unlock(prop.map_mutex);
+                break;
+
+            default:
+                break;
+            }
         }
+        else
+            pthread_mutex_unlock(prop.player_mutex);
         n = recv(prop.sockfd, (action_send *)&input_act, sizeof(action_send), 0);
     }
 
