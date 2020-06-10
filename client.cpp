@@ -241,6 +241,7 @@ int main(int argc, char *argv[])
                     {
                         switch (event.window.event)
                         {
+                        case SDL_WINDOWEVENT_RESTORED:
                         case SDL_WINDOWEVENT_SIZE_CHANGED: //для нормальной отрисовки при resize
                             need_review = SDL_TRUE;
                             break;
