@@ -25,6 +25,7 @@ struct thread_data
     std::vector<player> *player_list;
     pthread_mutex_t *player_count_mutex;
     size_t *player_count_connected;
+    std::vector<std::pair<size_t, size_t>> *start_points;
     int sockfd;
     size_t my_id;
 };
@@ -95,18 +96,9 @@ void *client_reciver(void *data)
     for (size_t k = 0; k < prop.player_list->size(); k++)
         if (!prop.player_list->at(k).is_alive)
         {
-            bool flag_found = false;
             prop.my_id = prop.player_list->at(k).id;
-            pthread_mutex_lock(prop.map_mutex);
-            for (size_t i = 0; i < prop.map_s->size() && !flag_found; i++)
-                for (size_t j = 0; j < prop.map_s->at(i).size() && !flag_found; j++)
-                    if (is_field_free_player(j, i, prop.my_id, *prop.player_list) && prop.map_s->at(j)[i] == empty)
-                    {
-                        flag_found = true;
-                        prop.player_list->at(prop.my_id).x = j;
-                        prop.player_list->at(prop.my_id).y = i;
-                    }
-            pthread_mutex_unlock(prop.map_mutex);
+            prop.player_list->at(prop.my_id).x = prop.start_points->at(prop.my_id).second;
+            prop.player_list->at(prop.my_id).y = prop.start_points->at(prop.my_id).first;
             prop.player_list->at(prop.my_id).is_alive = true;
             break;
         }
@@ -147,6 +139,20 @@ void *client_reciver(void *data)
                         pthread_mutex_unlock(prop.time_player_mutex);
                     }
                     pthread_mutex_unlock(prop.player_mutex);
+                    break;
+                case trap:
+                    prop.map_s->at(input_act.to_y)[input_act.to_x] = trap_on;
+                    pthread_mutex_lock(prop.time_map_mutex);
+                    gettimeofday(prop.update_map_time, NULL);
+                    pthread_mutex_unlock(prop.time_map_mutex);
+                case trap_on:
+                    pthread_mutex_lock(prop.player_mutex);
+                    prop.player_list->at(prop.my_id).x = prop.start_points->at(prop.my_id).second;
+                    prop.player_list->at(prop.my_id).y = prop.start_points->at(prop.my_id).first;
+                    pthread_mutex_unlock(prop.player_mutex);
+                    pthread_mutex_lock(prop.time_player_mutex);
+                    gettimeofday(prop.update_player_time, NULL);
+                    pthread_mutex_unlock(prop.time_player_mutex);
                     break;
 
                 default:
@@ -202,7 +208,7 @@ void *main_client_thread(void *port)
     // открытие файла карты
     std::ifstream in("map.txt");
     //размерности карты
-    int lines, colonums;
+    size_t lines, colonums;
     in >> lines >> colonums;
     if (!in.is_open()) //выход если открытие файла не успешно
     {
@@ -220,6 +226,11 @@ void *main_client_thread(void *port)
                 map_s[i][j] = temp;
             }
     }
+    size_t start_points_count;
+    in >> start_points_count;
+    std::vector<std::pair<size_t, size_t>> start_points(start_points_count);
+    for (size_t i = 0; i < start_points_count; i++) // считывание стартовых точек
+        in >> start_points[i].first >> start_points[i].second;
     in.close();                    //закрытие файла
     in.open("player_collors.txt"); //файл с цветами игроков
     if (!in.is_open())             //выход если открытие файла не успешно
@@ -227,10 +238,10 @@ void *main_client_thread(void *port)
         std::cout << "Collor file not found\n";
         exit(3);
     }
-    size_t player_limit_count;
-    in >> player_limit_count;
-    std::vector<player> player_list(player_limit_count); //список игроков
-    for (size_t i = 0; i < player_limit_count; i++)      //чтение цветов и заполнение полей по умолчанию
+    size_t player_collors_limit_count;
+    in >> player_collors_limit_count;
+    std::vector<player> player_list(player_collors_limit_count); //список игроков
+    for (size_t i = 0; i < player_collors_limit_count; i++)      //чтение цветов и заполнение полей по умолчанию
     {
         size_t r, g, b;
         in >> r >> g >> b;
@@ -242,6 +253,8 @@ void *main_client_thread(void *port)
         player_list[i].is_alive = false; //соединён ли игрок
     }
     in.close();
+
+    size_t player_limit_count = std::min(player_collors_limit_count, start_points_count);
 
     // время последнего обновления карты для детекции изменений
     struct timeval update_map_time;
@@ -319,6 +332,7 @@ void *main_client_thread(void *port)
         prop->player_count_mutex = &player_count_mutex;
         prop->player_count_connected = &player_count_connected;
         prop->sockfd = newsockfd;
+        prop->start_points = &start_points;
         // запуск потока для клиента, нет необходимости хранить, завершит себя сам по потере соединения
         pthread_t client_start;
         pthread_create(&client_start, NULL, client_reciver, (void *)prop);
