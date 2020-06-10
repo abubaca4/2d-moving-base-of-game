@@ -6,49 +6,12 @@
 #include <signal.h>
 
 #include "SDL2/SDL.h"
+#include "SDL2/SDL2_gfxPrimitives.h"
 
 #include <vector>
 #include <algorithm>
 
 #include "common_types.hpp"
-
-void DrawCircle(SDL_Renderer *renderer, int32_t centreX, int32_t centreY, int32_t radius) //какая-то функция отрисовки круга взята из интернета за неимением встроенной(на вики не нашёл)
-{
-    const int32_t diameter = (radius * 2);
-
-    int32_t x = (radius - 1);
-    int32_t y = 0;
-    int32_t tx = 1;
-    int32_t ty = 1;
-    int32_t error = (tx - diameter);
-
-    while (x >= y)
-    {
-        //  Each of the following renders an octant of the circle
-        SDL_RenderDrawPoint(renderer, centreX + x, centreY - y);
-        SDL_RenderDrawPoint(renderer, centreX + x, centreY + y);
-        SDL_RenderDrawPoint(renderer, centreX - x, centreY - y);
-        SDL_RenderDrawPoint(renderer, centreX - x, centreY + y);
-        SDL_RenderDrawPoint(renderer, centreX + y, centreY - x);
-        SDL_RenderDrawPoint(renderer, centreX + y, centreY + x);
-        SDL_RenderDrawPoint(renderer, centreX - y, centreY - x);
-        SDL_RenderDrawPoint(renderer, centreX - y, centreY + x);
-
-        if (error <= 0)
-        {
-            ++y;
-            error += ty;
-            ty += 2;
-        }
-
-        if (error > 0)
-        {
-            --x;
-            tx += 2;
-            error += (tx - diameter);
-        }
-    }
-}
 
 void boards(SDL_Renderer *renderer, const int w, const int h, const int lines, const int colonums) //отрисовка границ клеток
 {
@@ -88,8 +51,7 @@ void players_print(SDL_Renderer *renderer, const int w, const int h, const size_
     for (size_t i = 0; i < player_list.size(); i++)
         if (player_list[i].is_alive)
         {
-            SDL_SetRenderDrawColor(renderer, player_list[i].r, player_list[i].g, player_list[i].b, SDL_ALPHA_OPAQUE);
-            DrawCircle(renderer, w_side_len * (player_list[i].x + 0.5), h_side_len * (player_list[i].y + 0.5), 0.8 * std::min(w_side_len, h_side_len) / 2);
+            filledCircleRGBA(renderer, w_side_len * (player_list[i].x + 0.5), h_side_len * (player_list[i].y + 0.5), 0.8 * std::min(w_side_len, h_side_len) / 2, player_list[i].r, player_list[i].g, player_list[i].b, SDL_ALPHA_OPAQUE);
         }
 }
 
