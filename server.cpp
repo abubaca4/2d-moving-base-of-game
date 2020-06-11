@@ -199,6 +199,7 @@ void *client_reciver(void *data)
     pthread_mutex_lock(prop.player_count_mutex);
     (*prop.player_count_connected)--;
     pthread_mutex_unlock(prop.player_count_mutex);
+    close(prop.sockfd);
     delete &prop; //удаление структуры с данными для потоков
     return (void *)(0);
 }
@@ -280,7 +281,7 @@ void *main_client_thread(void *port)
     servaddr.sin_port = htons(*((int *)port));
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    sockfd = socket(PF_INET, SOCK_STREAM, 0);
+    *((int *)port) = sockfd = socket(PF_INET, SOCK_STREAM, 0);
     if (bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
     {
         servaddr.sin_port = 0;
@@ -371,6 +372,7 @@ int main(int argc, char *argv[])
         if (command == "exit")
         {
             pthread_cancel(main_thread); //остановка потока
+            close(port);                 //закрытие сокета
             exit(0);                     //выход
         }
         else if (command == "help")

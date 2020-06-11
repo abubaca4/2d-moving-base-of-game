@@ -209,6 +209,7 @@ int main(int argc, char *argv[])
         if (pthread_kill(reciver_thread, 0) != 0) //проверка жив ли поток(поток слушающий данные узнаёт о потере соединения первый и закрывается)
         {
             std::cout << "connection lost" << std::endl;
+            close(sockfd);
             exit(0);
         }
         pthread_mutex_lock(&map_mutex);
@@ -373,6 +374,8 @@ int main(int argc, char *argv[])
     }
     pthread_mutex_destroy(&time_mutex);
     pthread_mutex_destroy(&map_mutex);
+    pthread_mutex_destroy(&player_mutex);
     SDL_Quit();
+    close(sockfd);
     return 0;
 }
