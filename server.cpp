@@ -40,7 +40,7 @@ void *client_sender(void *data)
     prepare_message_data_send prep_m;  //подготовительное сообщение с типом посылаемых данных
     prep_m.type = my_number_from_list; //отправка номера этого клиента
     prep_m.size = prop.my_id;
-    int n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
+    int n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), MSG_NOSIGNAL);
 
     while (n)
     {
@@ -53,9 +53,9 @@ void *client_sender(void *data)
             pthread_mutex_lock(prop.map_mutex);
             prep_m.size = prop.map_s->size();
             prep_m.second_size = prop.map_s->at(0).size();
-            n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
+            n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), MSG_NOSIGNAL);
             for (size_t i = 0; i < prop.map_s->size(); i++) //отправка поля построчно
-                n = send(prop.sockfd, (field_cells_type *)prop.map_s->at(i).data(), prop.map_s->at(i).size() * sizeof(field_cells_type), 0);
+                n = send(prop.sockfd, (field_cells_type *)prop.map_s->at(i).data(), prop.map_s->at(i).size() * sizeof(field_cells_type), MSG_NOSIGNAL);
             pthread_mutex_unlock(prop.map_mutex);
         }
         else
@@ -68,8 +68,8 @@ void *client_sender(void *data)
             prep_m.type = player_list;
             pthread_mutex_lock(prop.player_mutex);
             prep_m.size = prop.player_list->size();
-            n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), 0);
-            n = send(prop.sockfd, (player *)prop.player_list->data(), prop.player_list->size() * sizeof(player), 0);
+            n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), MSG_NOSIGNAL);
+            n = send(prop.sockfd, (player *)prop.player_list->data(), prop.player_list->size() * sizeof(player), MSG_NOSIGNAL);
             pthread_mutex_unlock(prop.player_mutex);
         }
         else

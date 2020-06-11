@@ -274,28 +274,28 @@ int main(int argc, char *argv[])
                             temp.to_x = x;
                             temp.to_y = y - 1;
                             temp.action = move;
-                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             break;
 
                         case SDLK_DOWN:
                             temp.to_x = x;
                             temp.to_y = y + 1;
                             temp.action = move;
-                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             break;
 
                         case SDLK_LEFT:
                             temp.to_x = x - 1;
                             temp.to_y = y;
                             temp.action = move;
-                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             break;
 
                         case SDLK_RIGHT:
                             temp.to_x = x + 1;
                             temp.to_y = y;
                             temp.action = move;
-                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                            n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             break;
 
                         case SDLK_r:
@@ -305,25 +305,25 @@ int main(int argc, char *argv[])
                             {
                                 temp.to_x = x;
                                 temp.to_y = y - 1;
-                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             }
                             else if (y + 1 < mat.size() && (mat[y + 1][x] == door_open || mat[y + 1][x] == door_lock))
                             {
                                 temp.to_x = x;
                                 temp.to_y = y + 1;
-                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             }
                             else if (x - 1 < mat[y].size() && (mat[y][x - 1] == door_open || mat[y][x - 1] == door_lock))
                             {
                                 temp.to_x = x - 1;
                                 temp.to_y = y;
-                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             }
                             else if (x + 1 < mat[y].size() && (mat[y][x + 1] == door_open || mat[y][x + 1] == door_lock))
                             {
                                 temp.to_x = x + 1;
                                 temp.to_y = y;
-                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), 0);
+                                n = send(sockfd, (action_send *)&temp, sizeof(action_send), MSG_NOSIGNAL);
                             }
                             pthread_mutex_unlock(&map_mutex);
                             break;
