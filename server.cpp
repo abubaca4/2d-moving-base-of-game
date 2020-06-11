@@ -311,6 +311,7 @@ void *main_client_thread(void *port)
         if (player_count_connected == player_limit_count)
         {
             pthread_mutex_unlock(&player_count_mutex);
+            close(newsockfd);
             continue;
         }
         else

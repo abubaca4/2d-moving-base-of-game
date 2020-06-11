@@ -10,6 +10,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <iostream>
 
 #include "common_types.hpp"
 
@@ -205,6 +206,11 @@ int main(int argc, char *argv[])
         pthread_mutex_unlock(&map_mutex);
         pthread_mutex_unlock(&player_mutex);
         usleep(1);
+        if (pthread_kill(reciver_thread, 0) != 0) //проверка жив ли поток(поток слушающий данные узнаёт о потере соединения первый и закрывается)
+        {
+            std::cout << "connection lost" << std::endl;
+            exit(0);
+        }
         pthread_mutex_lock(&map_mutex);
         pthread_mutex_lock(&player_mutex);
     }
@@ -226,6 +232,7 @@ int main(int argc, char *argv[])
                 if (pthread_kill(reciver_thread, 0) != 0) //проверка жив ли поток(поток слушающий данные узнаёт о потере соединения первый и закрывается)
                 {
                     n = 0;
+                    std::cout << "connection lost" << std::endl;
                     continue;
                 }
 
