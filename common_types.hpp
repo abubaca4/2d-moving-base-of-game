@@ -26,7 +26,8 @@ enum data_type_send
 {
     field_type = 0,
     player_list = 1,
-    my_number_from_list = 2
+    my_number_from_list = 2,
+    score = 3
 };
 
 struct prepare_message_data_send
@@ -44,3 +45,5 @@ struct player
     uint8_t r, g, b;
     bool is_alive;
 };
+
+#define top_unit_count size_t

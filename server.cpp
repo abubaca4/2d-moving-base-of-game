@@ -26,6 +26,10 @@ struct thread_data
     pthread_mutex_t *player_count_mutex;
     size_t *player_count_connected;
     std::vector<std::pair<size_t, size_t>> *start_points;
+    pthread_mutex_t *players_top_mutex;
+    std::vector<top_unit_count> *players_top;
+    pthread_mutex_t *top_time_mutex;
+    struct timeval *players_top_time;
     int sockfd;
     size_t my_id;
 };
@@ -34,9 +38,12 @@ void *client_sender(void *data)
 {
     thread_data &prop = *((thread_data *)data); //присваивание в ссылку для удобства
     //структура с временем последней отправленной клиенту версии
-    struct timeval last_time_map, last_time_player;
+    struct timeval last_time_map, last_time_player, last_top_time;
     last_time_map.tv_sec = last_time_map.tv_usec = 0; //равна 0 для того чтобы по старту в первый раз произошла отправка
     last_time_player = last_time_map;
+    pthread_mutex_lock(prop.top_time_mutex);
+    last_top_time = *prop.players_top_time;
+    pthread_mutex_unlock(prop.top_time_mutex);
     prepare_message_data_send prep_m;  //подготовительное сообщение с типом посылаемых данных
     prep_m.type = my_number_from_list; //отправка номера этого клиента
     prep_m.size = prop.my_id;
@@ -74,6 +81,20 @@ void *client_sender(void *data)
         }
         else
             pthread_mutex_unlock(prop.time_player_mutex);
+        pthread_mutex_lock(prop.top_time_mutex);
+        if (memcmp(prop.players_top_time, &last_top_time, sizeof(timeval)))
+        {
+            last_top_time = *prop.players_top_time;
+            pthread_mutex_unlock(prop.top_time_mutex);
+            prep_m.type = score;
+            pthread_mutex_lock(prop.players_top_mutex);
+            prep_m.size = prop.players_top->size();
+            n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), MSG_NOSIGNAL);
+            n = send(prop.sockfd, (top_unit_count *)prop.players_top->data(), prop.players_top->size() * sizeof(top_unit_count), MSG_NOSIGNAL);
+            pthread_mutex_unlock(prop.players_top_mutex);
+        }
+        else
+            pthread_mutex_unlock(prop.top_time_mutex);
 
         usleep(1);
     }
@@ -256,6 +277,14 @@ void *main_client_thread(void *port)
     in.close();
 
     size_t player_limit_count = std::min(player_collors_limit_count, start_points_count);
+    //топ игроков по счёту
+    std::vector<top_unit_count> players_top(player_limit_count, 0);
+    pthread_mutex_t players_top_mutex;
+    pthread_mutex_init(&players_top_mutex, NULL);
+    struct timeval players_top_time;
+    gettimeofday(&players_top_time, NULL);
+    pthread_mutex_t top_time_mutex;
+    pthread_mutex_init(&top_time_mutex, NULL);
 
     // время последнего обновления карты для детекции изменений
     struct timeval update_map_time;
@@ -335,6 +364,10 @@ void *main_client_thread(void *port)
         prop->player_count_connected = &player_count_connected;
         prop->sockfd = newsockfd;
         prop->start_points = &start_points;
+        prop->players_top_mutex = &players_top_mutex;
+        prop->players_top = &players_top;
+        prop->top_time_mutex = &top_time_mutex;
+        prop->players_top_time = &players_top_time;
         // запуск потока для клиента, нет необходимости хранить, завершит себя сам по потере соединения
         pthread_t client_start;
         pthread_create(&client_start, NULL, client_reciver, (void *)prop);

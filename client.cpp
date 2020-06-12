@@ -123,6 +123,16 @@ void *reciver(void *data)
             prop.my_id = input_format.size;
             break;
 
+        case score:
+        {
+            std::vector<top_unit_count> game_score(input_format.size);
+            n = recv(prop.sockfd, (top_unit_count *)game_score.data(), game_score.size() * sizeof(top_unit_count), 0);
+            std::cout << "Game ended! Score list" << std::endl;
+            for (size_t i = 0; i < game_score.size(); i++)
+                std::cout << i << " : " << game_score[i] << std::endl;
+        }
+        break;
+
         default:
             break;
         }
