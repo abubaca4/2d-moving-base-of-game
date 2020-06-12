@@ -27,9 +27,11 @@ struct thread_data
     size_t *player_count_connected;
     std::vector<std::pair<size_t, size_t>> *start_points;
     pthread_mutex_t *players_top_mutex;
-    std::vector<top_unit_count> *players_top;
+    std::vector<top_unit_count> *players_top, *game_result;
     pthread_mutex_t *top_time_mutex;
     struct timeval *players_top_time;
+    top_unit_count *coin_count_collected;
+    top_unit_count *coint_count_max;
     int sockfd;
     size_t my_id;
 };
@@ -87,11 +89,9 @@ void *client_sender(void *data)
             last_top_time = *prop.players_top_time;
             pthread_mutex_unlock(prop.top_time_mutex);
             prep_m.type = score;
-            pthread_mutex_lock(prop.players_top_mutex);
-            prep_m.size = prop.players_top->size();
+            prep_m.size = prop.game_result->size();
             n = send(prop.sockfd, (prepare_message_data_send *)&prep_m, sizeof(prepare_message_data_send), MSG_NOSIGNAL);
-            n = send(prop.sockfd, (top_unit_count *)prop.players_top->data(), prop.players_top->size() * sizeof(top_unit_count), MSG_NOSIGNAL);
-            pthread_mutex_unlock(prop.players_top_mutex);
+            n = send(prop.sockfd, (top_unit_count *)prop.game_result->data(), prop.game_result->size() * sizeof(top_unit_count), MSG_NOSIGNAL);
         }
         else
             pthread_mutex_unlock(prop.top_time_mutex);
@@ -99,6 +99,54 @@ void *client_sender(void *data)
         usleep(1);
     }
     return (void *)(0);
+}
+
+void map_renew(std::vector<std::vector<field_cells_type>> &map_s)
+{
+    for (auto &i : map_s)
+        for (auto &j : i)
+            switch (j)
+            {
+            case coin:
+                j = empty;
+                break;
+
+            case door_open:
+                j = door_lock;
+                break;
+
+            case trap_on:
+                j = trap;
+                break;
+
+            default:
+                break;
+            }
+}
+
+top_unit_count coin_spawn(std::vector<std::vector<field_cells_type>> &map_s, std::vector<std::pair<size_t, size_t>> &start_points)
+{
+    top_unit_count count_of_coins = 0;
+    srand(time(NULL));
+    for (size_t i = 0; i < map_s.size(); i++)
+        for (size_t j = 0; j < map_s[i].size(); j++)
+            if (map_s[i][j] == empty && rand() % 2)
+            {
+                bool is_free = true;
+                for (auto &k : start_points)
+                    if (j == k.second && i == k.first)
+                    {
+                        is_free = false;
+                        break;
+                    }
+
+                if (is_free)
+                {
+                    map_s[i][j] = coin;
+                    count_of_coins++;
+                }
+            }
+    return count_of_coins;
 }
 
 bool is_field_free_player(size_t x, size_t y, size_t my_id, std::vector<player> &player_list) //свободно ли поле от другого игрока
@@ -174,6 +222,45 @@ void *client_reciver(void *data)
                     pthread_mutex_lock(prop.time_player_mutex);
                     gettimeofday(prop.update_player_time, NULL);
                     pthread_mutex_unlock(prop.time_player_mutex);
+                    break;
+
+                case coin:
+                    pthread_mutex_lock(prop.players_top_mutex);
+                    prop.players_top->at(prop.my_id)++; // добавление очков игроку
+                    (*prop.coin_count_collected)++; //сколько монет всего собрано
+                    if (*prop.coin_count_collected > (*prop.coint_count_max * 4) / 5) //собрано ли 4/5 монет(на случай если часть в недоступной зоне карты)
+                    {
+                        pthread_mutex_lock(prop.player_mutex);
+                        for (size_t i = 0; i < prop.start_points->size(); i++) //отправка игроков на стартовые позиции
+                            if (prop.player_list->at(i).is_alive)
+                            {
+                                prop.player_list->at(i).x = prop.start_points->at(i).second;
+                                prop.player_list->at(i).y = prop.start_points->at(i).first;
+                            }
+                        pthread_mutex_unlock(prop.player_mutex);
+                        *prop.game_result = *prop.players_top; //сохранение результата ишры
+                        *prop.players_top = std::vector<top_unit_count>(prop.start_points->size(), 0); //очистка топа
+                        pthread_mutex_lock(prop.players_top_mutex);
+                        gettimeofday(prop.players_top_time, NULL); //обновление времени для инициализации процедуры отправки топа
+                        pthread_mutex_unlock(prop.players_top_mutex);
+                        map_renew(*prop.map_s); //очистка карты
+                        *prop.coint_count_max = coin_spawn(*prop.map_s, *prop.start_points); //создание новых монет
+                    }
+                    else
+                    {
+                        pthread_mutex_lock(prop.player_mutex); 
+                        prop.player_list->at(prop.my_id).x = input_act.to_x;
+                        prop.player_list->at(prop.my_id).y = input_act.to_y;
+                        pthread_mutex_unlock(prop.player_mutex);
+                        prop.map_s->at(input_act.to_y)[input_act.to_x] = empty; //очистка ячейки от монеты
+                    }
+                    pthread_mutex_unlock(prop.players_top_mutex);
+                    pthread_mutex_lock(prop.time_player_mutex);
+                    gettimeofday(prop.update_player_time, NULL);
+                    pthread_mutex_unlock(prop.time_player_mutex);
+                    pthread_mutex_lock(prop.time_map_mutex);
+                    gettimeofday(prop.update_map_time, NULL);
+                    pthread_mutex_unlock(prop.time_map_mutex);
                     break;
 
                 default:
@@ -278,7 +365,7 @@ void *main_client_thread(void *port)
 
     size_t player_limit_count = std::min(player_collors_limit_count, start_points_count);
     //топ игроков по счёту
-    std::vector<top_unit_count> players_top(player_limit_count, 0);
+    std::vector<top_unit_count> players_top(player_limit_count, 0), game_result;
     pthread_mutex_t players_top_mutex;
     pthread_mutex_init(&players_top_mutex, NULL);
     struct timeval players_top_time;
@@ -331,6 +418,9 @@ void *main_client_thread(void *port)
     pthread_mutex_t player_count_mutex;
     pthread_mutex_init(&player_count_mutex, NULL);
 
+    top_unit_count coin_count_collected = 0;
+    top_unit_count coint_count_max = coin_spawn(map_s, start_points);
+
     while (true)
     {
         struct sockaddr_in cliaddr;
@@ -368,6 +458,9 @@ void *main_client_thread(void *port)
         prop->players_top = &players_top;
         prop->top_time_mutex = &top_time_mutex;
         prop->players_top_time = &players_top_time;
+        prop->coin_count_collected = &coin_count_collected;
+        prop->coint_count_max = &coint_count_max;
+        prop->game_result = &game_result;
         // запуск потока для клиента, нет необходимости хранить, завершит себя сам по потере соединения
         pthread_t client_start;
         pthread_create(&client_start, NULL, client_reciver, (void *)prop);
