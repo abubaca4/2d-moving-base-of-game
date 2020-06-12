@@ -226,8 +226,8 @@ void *client_reciver(void *data)
 
                 case coin:
                     pthread_mutex_lock(prop.players_top_mutex);
-                    prop.players_top->at(prop.my_id)++; // добавление очков игроку
-                    (*prop.coin_count_collected)++; //сколько монет всего собрано
+                    prop.players_top->at(prop.my_id)++;                               // добавление очков игроку
+                    (*prop.coin_count_collected)++;                                   //сколько монет всего собрано
                     if (*prop.coin_count_collected > (*prop.coint_count_max * 4) / 5) //собрано ли 4/5 монет(на случай если часть в недоступной зоне карты)
                     {
                         pthread_mutex_lock(prop.player_mutex);
@@ -238,17 +238,18 @@ void *client_reciver(void *data)
                                 prop.player_list->at(i).y = prop.start_points->at(i).first;
                             }
                         pthread_mutex_unlock(prop.player_mutex);
-                        *prop.game_result = *prop.players_top; //сохранение результата ишры
+                        *prop.game_result = *prop.players_top;                                         //сохранение результата ишры
                         *prop.players_top = std::vector<top_unit_count>(prop.start_points->size(), 0); //очистка топа
-                        pthread_mutex_lock(prop.players_top_mutex);
+                        pthread_mutex_lock(prop.top_time_mutex);
                         gettimeofday(prop.players_top_time, NULL); //обновление времени для инициализации процедуры отправки топа
-                        pthread_mutex_unlock(prop.players_top_mutex);
+                        pthread_mutex_unlock(prop.top_time_mutex);
                         map_renew(*prop.map_s); //очистка карты
+                        *prop.coin_count_collected = 0;
                         *prop.coint_count_max = coin_spawn(*prop.map_s, *prop.start_points); //создание новых монет
                     }
                     else
                     {
-                        pthread_mutex_lock(prop.player_mutex); 
+                        pthread_mutex_lock(prop.player_mutex);
                         prop.player_list->at(prop.my_id).x = input_act.to_x;
                         prop.player_list->at(prop.my_id).y = input_act.to_y;
                         pthread_mutex_unlock(prop.player_mutex);
