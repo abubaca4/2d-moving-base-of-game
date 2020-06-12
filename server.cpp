@@ -313,7 +313,7 @@ void *client_reciver(void *data)
     return (void *)(0);
 }
 
-void *main_client_thread(void *port)
+void *main_client_thread(void *data)
 {
     // открытие файла карты
     std::ifstream in("map.txt");
@@ -395,10 +395,10 @@ void *main_client_thread(void *port)
     struct sockaddr_in servaddr;
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(*((int *)port));
+    servaddr.sin_port = htons(((thread_data *)data)->sockfd);
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    *((int *)port) = sockfd = socket(PF_INET, SOCK_STREAM, 0);
+    sockfd = socket(PF_INET, SOCK_STREAM, 0);
     if (bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
     {
         servaddr.sin_port = 0;
@@ -421,6 +421,26 @@ void *main_client_thread(void *port)
 
     top_unit_count coin_count_collected = 0;
     top_unit_count coint_count_max = coin_spawn(map_s, start_points);
+
+    ((thread_data *)data)->time_map_mutex = &time_map_mutex;
+    ((thread_data *)data)->update_map_time = &update_map_time;
+    ((thread_data *)data)->time_player_mutex = &time_player_mutex;
+    ((thread_data *)data)->update_player_time = &update_player_time;
+    ((thread_data *)data)->map_mutex = &map_mutex;
+    ((thread_data *)data)->map_s = &map_s;
+    ((thread_data *)data)->player_mutex = &player_mutex;
+    ((thread_data *)data)->player_list = &player_list;
+    ((thread_data *)data)->player_count_mutex = &player_count_mutex;
+    ((thread_data *)data)->player_count_connected = &player_count_connected;
+    ((thread_data *)data)->sockfd = sockfd;
+    ((thread_data *)data)->start_points = &start_points;
+    ((thread_data *)data)->players_top_mutex = &players_top_mutex;
+    ((thread_data *)data)->players_top = &players_top;
+    ((thread_data *)data)->top_time_mutex = &top_time_mutex;
+    ((thread_data *)data)->players_top_time = &players_top_time;
+    ((thread_data *)data)->coin_count_collected = &coin_count_collected;
+    ((thread_data *)data)->coint_count_max = &coint_count_max;
+    ((thread_data *)data)->game_result = &game_result;
 
     while (true)
     {
@@ -488,7 +508,9 @@ int main(int argc, char *argv[])
     //поток для приёма новых соединений
     pthread_t main_thread;
     //создание потока и передача порта
-    pthread_create(&main_thread, NULL, main_client_thread, (void *)&port);
+    thread_data data;
+    data.sockfd = port;
+    pthread_create(&main_thread, NULL, main_client_thread, (void *)&data);
 
     std::cout << "Ready to recive commands\n";
     bool done = false;
@@ -499,14 +521,44 @@ int main(int argc, char *argv[])
         if (command == "exit")
         {
             pthread_cancel(main_thread); //остановка потока
-            close(port);                 //закрытие сокета
+            close(data.sockfd);          //закрытие сокета
             exit(0);                     //выход
+        }
+        else if (command == "restart")
+        {
+            pthread_mutex_lock(data.map_mutex);
+            pthread_mutex_lock(data.players_top_mutex);
+            pthread_mutex_lock(data.player_mutex);
+            for (size_t i = 0; i < data.start_points->size(); i++) //отправка игроков на стартовые позиции
+                if (data.player_list->at(i).is_alive)
+                {
+                    data.player_list->at(i).x = data.start_points->at(i).second;
+                    data.player_list->at(i).y = data.start_points->at(i).first;
+                }
+            pthread_mutex_unlock(data.player_mutex);
+            *data.game_result = *data.players_top; //сохранение результата ишры
+            *data.players_top = std::vector<top_unit_count>(data.start_points->size(), 0);
+            pthread_mutex_lock(data.top_time_mutex);
+            gettimeofday(data.players_top_time, NULL); //обновление времени для инициализации процедуры отправки топа
+            pthread_mutex_unlock(data.top_time_mutex);
+            map_renew(*data.map_s); //очистка карты
+            *data.coin_count_collected = 0;
+            *data.coint_count_max = coin_spawn(*data.map_s, *data.start_points);
+            pthread_mutex_unlock(data.map_mutex);
+            pthread_mutex_unlock(data.players_top_mutex);
+            pthread_mutex_lock(data.time_player_mutex);
+            gettimeofday(data.update_player_time, NULL);
+            pthread_mutex_unlock(data.time_player_mutex);
+            pthread_mutex_lock(data.time_map_mutex);
+            gettimeofday(data.update_map_time, NULL);
+            pthread_mutex_unlock(data.time_map_mutex);
         }
         else if (command == "help")
         {
             std::cout << "Avalible commands:\n";
             std::cout << "exit - closes app\n";
             std::cout << "help - shows avalible commands\n";
+            std::cout << "restart - show score and restart game\n";
         }
         else
         {
