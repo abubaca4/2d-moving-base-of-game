@@ -130,6 +130,7 @@ void *reciver(void *data)
             std::cout << "Game ended! Score list" << std::endl;
             for (size_t i = 0; i < game_score.size(); i++)
                 std::cout << i << " : " << game_score[i] << std::endl;
+            std::cout << "You are the " << prop.my_id << " player" << std::endl;
         }
         break;
 
